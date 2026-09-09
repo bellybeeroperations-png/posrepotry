@@ -8,8 +8,11 @@ import os
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from bson import ObjectId
+
+HK_TZ = ZoneInfo("Asia/Hong_Kong")
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Response, Request
 from motor.motor_asyncio import AsyncIOMotorClient
 from starlette.middleware.cors import CORSMiddleware
@@ -165,6 +168,12 @@ async def create_category(body: CategoryIn, user: dict = Depends(get_current_use
     return serialize(doc)
 
 
+@api.patch("/categories/{cid}")
+async def update_category(cid: str, body: CategoryIn, user: dict = Depends(get_current_user)):
+    await db.categories.update_one({"_id": _oid(cid)}, {"$set": body.model_dump()})
+    return serialize(await db.categories.find_one({"_id": _oid(cid)}))
+
+
 @api.delete("/categories/{cid}")
 async def delete_category(cid: str, user: dict = Depends(get_current_user)):
     await db.categories.delete_one({"_id": _oid(cid)})
@@ -200,9 +209,31 @@ async def delete_product(pid: str, user: dict = Depends(get_current_user)):
 
 
 # ===================== HAPPY HOUR =====================
+def _is_hh_active(hh: dict, now_hk: datetime) -> bool:
+    if not hh.get("active", True):
+        return False
+    if now_hk.weekday() not in (hh.get("days") or []):
+        return False
+    cur = now_hk.strftime("%H:%M")
+    start, end = hh.get("start_time", ""), hh.get("end_time", "")
+    if not start or not end:
+        return False
+    if start <= end:
+        return start <= cur <= end
+    return cur >= start or cur <= end
+
+
 @api.get("/happy-hours")
 async def list_hh(user: dict = Depends(get_current_user)):
     return sl(await db.happy_hours.find().to_list(50))
+
+
+@api.get("/happy-hours/active")
+async def active_hh(user: dict = Depends(get_current_user)):
+    now_hk = datetime.now(HK_TZ)
+    hhs = await db.happy_hours.find({"active": True}).to_list(50)
+    result = [serialize(h) for h in hhs if _is_hh_active(h, now_hk)]
+    return {"active": result, "hk_time": now_hk.isoformat(), "weekday": now_hk.weekday()}
 
 
 @api.post("/happy-hours")
@@ -213,6 +244,12 @@ async def create_hh(body: HappyHourIn, user: dict = Depends(get_current_user)):
     r = await db.happy_hours.insert_one(doc)
     doc["_id"] = r.inserted_id
     return serialize(doc)
+
+
+@api.patch("/happy-hours/{hid}")
+async def update_hh(hid: str, body: HappyHourIn, user: dict = Depends(get_current_user)):
+    await db.happy_hours.update_one({"_id": _oid(hid)}, {"$set": body.model_dump()})
+    return serialize(await db.happy_hours.find_one({"_id": _oid(hid)}))
 
 
 @api.delete("/happy-hours/{hid}")
@@ -367,7 +404,13 @@ async def pay_order(oid: str, body: PaymentIn, user: dict = Depends(get_current_
     o = await db.orders.find_one({"_id": _oid(oid)})
     if not o:
         raise HTTPException(404, "Not found")
-    change = round(body.amount - o["total"], 2) if body.method == "cash" else 0.0
+    if body.method == "split":
+        paid = sum((s.get("amount") or 0) for s in body.splits)
+        if paid + 0.01 < o["total"]:
+            raise HTTPException(400, f"Split total HK${paid:.2f} is less than order total HK${o['total']:.2f}")
+        change = round(paid - o["total"], 2)
+    else:
+        change = round(body.amount - o["total"], 2) if body.method == "cash" else 0.0
     payment = {
         "method": body.method, "amount": body.amount, "tip": body.tip,
         "splits": body.splits, "change": max(change, 0),

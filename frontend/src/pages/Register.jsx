@@ -20,10 +20,27 @@ export default function Register() {
   const [payModal, setPayModal] = useState(false);
   const [members, setMembers] = useState([]);
   const [memberQ, setMemberQ] = useState("");
+  const [activeHH, setActiveHH] = useState([]); // list of active happy hours
 
   const orderId = sp.get("order");
   const tableId = sp.get("table");
   const areaId = sp.get("area");
+
+  // Compute HH discount for a product given active rules
+  const hhFor = (p) => {
+    if (!p?.happy_hour_eligible) return 0;
+    let best = 0;
+    for (const h of activeHH) {
+      if ((h.category_ids || []).includes(p.category_id)) {
+        best = Math.max(best, h.percent_off || 0);
+      }
+    }
+    return best;
+  };
+  const hhPrice = (p, base = p.price) => {
+    const pct = hhFor(p);
+    return pct ? +(base * (1 - pct / 100)).toFixed(2) : base;
+  };
 
   useEffect(() => {
     api.get("/categories").then((r) => {
@@ -31,6 +48,10 @@ export default function Register() {
       if (r.data[0]) setActiveCat(r.data[0].id);
     });
     api.get("/products").then((r) => setProducts(r.data));
+    const loadHH = () => api.get("/happy-hours/active").then((r) => setActiveHH(r.data.active || []));
+    loadHH();
+    const t = setInterval(loadHH, 60000); // refresh every minute
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -65,7 +86,7 @@ export default function Register() {
 
   const addProduct = (p) => {
     if (p.variants?.length > 0) return setVariantModal(p);
-    pushLine(p, null, [], p.price);
+    pushLine(p, null, [], hhPrice(p));
   };
 
   const pushLine = (p, variant, mods, unitPrice) => {
@@ -174,6 +195,18 @@ export default function Register() {
 
       {/* Products grid */}
       <div className="col-span-6 flex flex-col overflow-hidden">
+        {activeHH.length > 0 && (
+          <div data-testid="hh-banner" className="mb-3 px-3 py-2 rounded-lg border border-[var(--amber)]/50 bg-[var(--amber)]/10 flex items-center gap-2 text-xs">
+            <span className="pulse-dot" style={{ background: "#FFB800", boxShadow: "0 0 12px #FFB800" }} />
+            <span className="font-mono uppercase tracking-widest text-[var(--amber)] font-bold">
+              Happy Hour Live
+            </span>
+            <span className="text-[var(--muted)]">
+              {activeHH.map(h => `${h.name} -${h.percent_off}%`).join(" · ")}
+            </span>
+            <span className="ml-auto text-[var(--muted)]">Ends {activeHH[0]?.end_time}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2 mb-3">
           <div className="flex bg-[var(--surface)] rounded-lg border border-[var(--border)] p-1">
             {[["dine_in", UtensilsCrossed, "Dine-In"], ["pick_up", ShoppingBag, "Pick-Up"], ["delivery", Truck, "Delivery"]].map(
@@ -205,25 +238,37 @@ export default function Register() {
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3 overflow-y-auto flex-1 pr-1">
-          {filteredProducts.map((p) => (
-            <button
-              key={p.id}
-              data-testid={`prod-${p.name}`}
-              onClick={() => addProduct(p)}
-              className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-left hover:border-[var(--cyan)] hover:bg-[var(--surface-2)] transition group"
-            >
-              <div className="font-display font-bold text-white group-hover:text-[var(--cyan)] leading-tight">
-                {p.name}
-              </div>
-              <div className="text-xs font-mono text-[var(--muted)] mt-1 uppercase">{p.course}</div>
-              <div className="mt-2 font-mono font-bold text-[var(--amber)]">{fmtHKD(p.price)}</div>
-              {p.happy_hour_eligible && (
-                <div className="mt-1 inline-block text-[9px] font-mono uppercase bg-[var(--amber)]/15 text-[var(--amber)] px-1.5 py-0.5 rounded">
-                  Happy Hr
-                </div>
-              )}
-            </button>
-          ))}
+          {filteredProducts.map((p) => {
+            const pct = hhFor(p);
+            const dp = hhPrice(p);
+            return (
+              <button
+                key={p.id}
+                data-testid={`prod-${p.name}`}
+                onClick={() => addProduct(p)}
+                className={`p-4 rounded-xl border text-left transition group ${
+                  pct ? "border-[var(--amber)]/60 bg-[var(--amber)]/5 hover:bg-[var(--amber)]/10" : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--cyan)] hover:bg-[var(--surface-2)]"
+                }`}
+              >
+                <div className="font-display font-bold text-white leading-tight">{p.name}</div>
+                <div className="text-xs font-mono text-[var(--muted)] mt-1 uppercase">{p.course}</div>
+                {pct ? (
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="font-mono font-bold text-[var(--amber)]">{fmtHKD(dp)}</span>
+                    <span className="text-[10px] font-mono text-[var(--muted)] line-through">{fmtHKD(p.price)}</span>
+                    <span className="text-[9px] font-mono uppercase bg-[var(--amber)] text-black px-1 rounded font-black">-{pct}%</span>
+                  </div>
+                ) : (
+                  <div className="mt-2 font-mono font-bold text-[var(--amber)]">{fmtHKD(p.price)}</div>
+                )}
+                {p.happy_hour_eligible && !pct && (
+                  <div className="mt-1 inline-block text-[9px] font-mono uppercase bg-[var(--amber)]/15 text-[var(--amber)] px-1.5 py-0.5 rounded">
+                    Happy Hr Eligible
+                  </div>
+                )}
+              </button>
+            );
+          })}
           {filteredProducts.length === 0 && (
             <div className="col-span-3 text-[var(--muted)] text-sm">No products in this category.</div>
           )}
@@ -361,6 +406,7 @@ export default function Register() {
       {variantModal && (
         <VariantModal
           product={variantModal}
+          hhPercent={hhFor(variantModal)}
           onClose={() => setVariantModal(null)}
           onPick={(variant, mods, price) => {
             pushLine(variantModal, variant, mods, price);
@@ -372,15 +418,16 @@ export default function Register() {
       {payModal && (
         <PaymentModal
           total={totals.total}
+          guests={order.guests}
           onClose={() => setPayModal(false)}
-          onPay={async (method, amount, tip) => {
+          onPay={async (payload) => {
             try {
-              await api.post(`/orders/${order.id}/pay`, { method, amount, tip, splits: [] });
+              await api.post(`/orders/${order.id}/pay`, payload);
               toast.success("Payment complete");
               setPayModal(false);
               nav("/floorplan");
             } catch (e) {
-              toast.error("Payment failed");
+              toast.error(e?.response?.data?.detail || "Payment failed");
             }
           }}
         />
@@ -389,14 +436,15 @@ export default function Register() {
   );
 }
 
-function VariantModal({ product, onClose, onPick }) {
+function VariantModal({ product, onClose, onPick, hhPercent = 0 }) {
   const [variant, setVariant] = useState(product.variants[0]?.name || null);
   const [mods, setMods] = useState([]);
   const vObj = product.variants.find((v) => v.name === variant);
-  const price = product.price + (vObj?.price_delta || 0) + mods.reduce((s, m) => {
+  const rawPrice = product.price + (vObj?.price_delta || 0) + mods.reduce((s, m) => {
     const mo = product.modifiers.find((x) => x.name === m);
     return s + (mo?.price_delta || 0);
   }, 0);
+  const price = hhPercent ? +(rawPrice * (1 - hhPercent / 100)).toFixed(2) : rawPrice;
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl w-full max-w-md p-6">
@@ -460,53 +508,148 @@ function VariantModal({ product, onClose, onPick }) {
   );
 }
 
-function PaymentModal({ total, onClose, onPay }) {
+function PaymentModal({ total, guests, onClose, onPay }) {
+  const [mode, setMode] = useState("single"); // single | split
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState(total);
   const [tip, setTip] = useState(0);
+  const [splits, setSplits] = useState([{ method: "cash", amount: total }]);
+  const [splitMode, setSplitMode] = useState("equal"); // equal | by_seat | custom
   const change = method === "cash" ? Math.max(0, amount - total) : 0;
   const methods = [
     ["cash", Banknote, "Cash"], ["card", CreditCard, "Card"],
     ["octopus", Coins, "Octopus"], ["wallet", Wallet, "Wallet"],
   ];
+  const splitTotal = splits.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+  const splitDiff = +(splitTotal - total).toFixed(2);
+
+  const applySplitMode = (m) => {
+    setSplitMode(m);
+    if (m === "equal") {
+      const n = splits.length || 2;
+      const per = +(total / n).toFixed(2);
+      const arr = Array.from({ length: n }, (_, i) => ({ method: splits[i]?.method || "card", amount: per }));
+      // adjust last to fix rounding
+      const rem = +(total - per * n).toFixed(2);
+      arr[arr.length - 1].amount = +(per + rem).toFixed(2);
+      setSplits(arr);
+    } else if (m === "by_seat") {
+      const per = +(total / guests).toFixed(2);
+      const arr = Array.from({ length: guests }, (_, i) => ({ method: "card", amount: per, label: `Seat ${i + 1}` }));
+      const rem = +(total - per * guests).toFixed(2);
+      if (arr.length) arr[arr.length - 1].amount = +(per + rem).toFixed(2);
+      setSplits(arr);
+    }
+    // custom: keep whatever's there
+  };
+
+  const setSplit = (i, k, v) =>
+    setSplits(splits.map((s, idx) => (idx === i ? { ...s, [k]: k === "amount" ? parseFloat(v) || 0 : v } : s)));
+  const addSplit = () => setSplits([...splits, { method: "card", amount: 0 }]);
+  const delSplit = (i) => setSplits(splits.filter((_, idx) => idx !== i));
+
+  const submit = () => {
+    if (mode === "split") {
+      onPay({ method: "split", amount: splitTotal, tip, splits });
+    } else {
+      onPay({ method, amount, tip, splits: [] });
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl w-full max-w-md p-6">
-        <div className="font-display font-black text-2xl mb-1">Payment</div>
-        <div className="text-3xl font-display font-black text-[var(--cyan)] mb-4">{fmtHKD(total)}</div>
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          {methods.map(([v, Icon, label]) => (
-            <button
-              key={v}
-              data-testid={`pay-method-${v}`}
-              onClick={() => setMethod(v)}
-              className={`p-3 rounded-lg border flex flex-col items-center gap-1 ${
-                method === v ? "border-[var(--cyan)] bg-[var(--cyan)]/10" : "border-[var(--border)] bg-[var(--surface-2)]"
-              }`}
-            >
-              <Icon size={20} />
-              <span className="text-[10px] font-mono uppercase">{label}</span>
-            </button>
-          ))}
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="font-display font-black text-2xl">Payment</div>
+            <div className="text-xs font-mono uppercase text-[var(--muted)]">Order total</div>
+          </div>
+          <div className="text-3xl font-display font-black text-[var(--cyan)]">{fmtHKD(total)}</div>
         </div>
-        <label className="text-xs font-mono uppercase text-[var(--muted)]">Amount received</label>
-        <input
-          data-testid="pay-amount"
-          type="number" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-          className="w-full mt-1 mb-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-3 py-2 font-mono text-lg"
-        />
-        <label className="text-xs font-mono uppercase text-[var(--muted)]">Tip</label>
-        <input
-          data-testid="pay-tip"
-          type="number" value={tip} onChange={(e) => setTip(parseFloat(e.target.value) || 0)}
-          className="w-full mt-1 bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-3 py-2 font-mono"
-        />
-        {method === "cash" && (
-          <div className="mt-3 text-sm font-mono">Change: <span className="text-[var(--amber)] font-bold">{fmtHKD(change)}</span></div>
+
+        <div className="flex gap-1 mb-4 p-1 bg-[var(--surface-2)] rounded-lg">
+          <button data-testid="pay-mode-single" onClick={() => setMode("single")}
+            className={`flex-1 py-2 rounded-md text-sm font-semibold ${mode === "single" ? "bg-[var(--cyan)] text-black" : "text-[var(--muted)]"}`}>
+            Single Payment
+          </button>
+          <button data-testid="pay-mode-split" onClick={() => { setMode("split"); applySplitMode(splitMode); }}
+            className={`flex-1 py-2 rounded-md text-sm font-semibold ${mode === "split" ? "bg-[var(--amber)] text-black" : "text-[var(--muted)]"}`}>
+            Split Bill
+          </button>
+        </div>
+
+        {mode === "single" ? (
+          <>
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {methods.map(([v, Icon, label]) => (
+                <button key={v} data-testid={`pay-method-${v}`} onClick={() => setMethod(v)}
+                  className={`p-3 rounded-lg border flex flex-col items-center gap-1 ${
+                    method === v ? "border-[var(--cyan)] bg-[var(--cyan)]/10" : "border-[var(--border)] bg-[var(--surface-2)]"
+                  }`}>
+                  <Icon size={20} />
+                  <span className="text-[10px] font-mono uppercase">{label}</span>
+                </button>
+              ))}
+            </div>
+            <label className="text-xs font-mono uppercase text-[var(--muted)]">Amount received</label>
+            <input data-testid="pay-amount" type="number" value={amount}
+              onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+              className="w-full mt-1 mb-3 bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-3 py-2 font-mono text-lg" />
+            <label className="text-xs font-mono uppercase text-[var(--muted)]">Tip</label>
+            <input data-testid="pay-tip" type="number" value={tip}
+              onChange={(e) => setTip(parseFloat(e.target.value) || 0)}
+              className="w-full mt-1 bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-3 py-2 font-mono" />
+            {method === "cash" && (
+              <div className="mt-3 text-sm font-mono">Change: <span className="text-[var(--amber)] font-bold">{fmtHKD(change)}</span></div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex gap-1 mb-3 text-[10px] font-mono uppercase">
+              {[["equal", "Equal Parts"], ["by_seat", `By Seat (${guests})`], ["custom", "Custom"]].map(([v, l]) => (
+                <button key={v} data-testid={`split-mode-${v}`} onClick={() => applySplitMode(v)}
+                  className={`flex-1 py-2 rounded-md border ${splitMode === v ? "bg-[var(--amber)] text-black border-transparent" : "bg-[var(--surface-2)] text-[var(--muted)] border-[var(--border)]"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {splits.map((s, i) => (
+                <div key={i} className="grid grid-cols-[80px_1fr_100px_36px] gap-2 items-center">
+                  <span className="text-xs font-mono text-[var(--muted)]">{s.label || `Split ${i + 1}`}</span>
+                  <select data-testid={`split-method-${i}`} value={s.method} onChange={(e) => setSplit(i, "method", e.target.value)}
+                    className="bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-2 py-1.5 text-sm">
+                    {methods.map(([v, , l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                  <input data-testid={`split-amount-${i}`} type="number" step="0.01" value={s.amount}
+                    onChange={(e) => setSplit(i, "amount", e.target.value)}
+                    disabled={splitMode !== "custom"}
+                    className="bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-2 py-1.5 text-sm font-mono text-right disabled:opacity-70" />
+                  {splitMode === "custom" && splits.length > 1 && (
+                    <button onClick={() => delSplit(i)} className="text-[var(--rose)]"><Trash2 size={14} /></button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {splitMode === "custom" && (
+              <button data-testid="split-add" onClick={addSplit} className="mt-2 text-xs text-[var(--cyan)] flex items-center gap-1">
+                <Plus size={12} /> Add split
+              </button>
+            )}
+            <div className="mt-3 p-2 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between text-xs font-mono">
+              <span>Splits sum</span>
+              <span className={splitDiff < -0.01 ? "text-[var(--rose)] font-bold" : "text-[var(--amber)] font-bold"} data-testid="split-sum">
+                {fmtHKD(splitTotal)} {splitDiff !== 0 && `(${splitDiff > 0 ? "+" : ""}${fmtHKD(splitDiff)})`}
+              </span>
+            </div>
+          </>
         )}
+
         <div className="flex gap-2 mt-4">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg bg-[var(--surface-2)]">Cancel</button>
-          <button data-testid="pay-confirm" onClick={() => onPay(method, amount, tip)} className="flex-1 btn-neon py-2.5 rounded-lg">
+          <button data-testid="pay-confirm" onClick={submit}
+            disabled={mode === "split" && splitDiff < -0.01}
+            className="flex-1 btn-neon py-2.5 rounded-lg disabled:opacity-40">
             Confirm
           </button>
         </div>

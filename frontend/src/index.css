@@ -190,6 +190,12 @@ body,
     }
 }
 
+/* Ticker animation */
+@keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
 .fade-in {
     animation: fadeIn 0.3s ease-out;
 }

@@ -16,6 +16,13 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - DB: MongoDB `hkbar_pos` — collections `users`, `areas`, `tables`, `categories`, `products`, `orders`, `members`, `happy_hours`
 - Theme: Hong Kong neon cyberpunk dark mode (`#0B0E14` bg, `#00F2FE` cyan, `#FFB800` amber, distinct table-state colors)
 
+## What's Implemented (v2 · Feb 2026 iteration)
+- **Menu Matrix Editor**: rich Product editor with variant + modifier grids (add/edit/delete rows, price deltas), Category editor with color swatches, Happy Hour editor with time inputs, day toggles, and category multi-select
+- **Live Happy Hour**: `/api/happy-hours/active` returns rules whose HK weekday + time window matches now (cross-midnight aware). Register shows a live HH banner and applies discounted prices with -X% badge + strikethrough automatically on eligible products. Variant modal also discounts.
+- **Split Payments**: PaymentModal with Single vs Split modes. Split supports Equal Parts, By Seat (uses guest count), and Custom (add/remove rows, per-row method dropdown, per-row amount). Live sum indicator with under/over feedback. Backend validates split total ≥ order total.
+- **Floorplan enhancements**: KPI header bar (Covers · Open Tables · $ Due · Free Tables · >30m Sessions · Day OPEN/CLOSED — auto based on 11:00–06:00 HK window), live sports ticker with 6 games, right-side Active Promotions / Items to Push / Announcements sidebar cards
+- All new features tested end-to-end: iteration_2.json backend + frontend 100% pass
+
 ## What's Implemented (v1 · Feb 2026)
 - Email + password login and PIN quick-switch login (5 seeded users, roles: admin/manager/bartender/server/cashier)
 - Dual-area floorplan (Main+Terrace 12 tables, Backroom 6 tables) with drag-to-reposition edit mode, add/delete tables, live status pills (available/occupied/bill/dirty/reserved), guest counts, current bill overlay, 5-second polling
