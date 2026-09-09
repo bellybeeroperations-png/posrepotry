@@ -1,0 +1,116 @@
+{
+  "theme": "Dark Mode (Cybernetic Hong Kong Nightlife & High-Density Tactical POS)",
+  "color_palette": {
+    "background": "#0B0E14",
+    "surface": "#121824",
+    "surface_secondary": "#1A2234",
+    "border": "#26334D",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "accent_primary_neon_cyan": "#00F2FE",
+    "accent_secondary_neon_amber": "#FFB800",
+    "table_available_emerald": "#10B981",
+    "table_occupied_amber": "#F59E0B",
+    "table_bill_requested_cyan": "#06B6D4",
+    "table_dirty_rose": "#F43F5E",
+    "table_reserved_purple": "#A855F7"
+  },
+  "typography": {
+    "font_family_headings": "Outfit, Cabinet Grotesk, sans-serif",
+    "font_family_body": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "h1": "text-2xl sm:text-3xl font-extrabold tracking-tight",
+    "h2": "text-xl sm:text-2xl font-bold tracking-tight",
+    "h3": "text-lg font-semibold",
+    "body": "text-sm leading-relaxed",
+    "caption": "text-xs font-mono tracking-wider uppercase text-slate-400"
+  },
+  "layout_and_navigation": {
+    "mode": "Lightspeed-inspired Ultra-Tactile High Density Grid POS",
+    "sidebar": "Left fixed icon/text rail for lightning-quick view switches: [Floorplan], [Register / Order Pad], [Menu Mgmt], [CRM / Members], [Staff & Roles], [Live Sports & Events], [Reports & Insights]",
+    "top_bar": "Live Hong Kong Time (11:00 AM - 06:00 AM shift tracker), Active Staff PIN badge, Quick Search bar (orders/members), Emergency/Service status toggle"
+  },
+  "key_features_implementation": {
+    "login_screen": {
+      "mode": "Staff Authentication with Quick PIN Pad",
+      "features": ["Email/Password login", "Numeric Touch Screen PIN Pad (4-digit quick switch)", "Role auto-detection (Manager, Bartender, Waiter, Cashier)"]
+    },
+    "floorplan_module": {
+      "areas": ["Backroom", "Main+Terrace"],
+      "capabilities": [
+        "Interactive canvas grid with draggable/resizable tables & obstacle elements (Bar Counter, Darts Area, Stage, TV Screen)",
+        "Live status indicators (Available, Occupied, Bill Requested, Dirty, Reserved) with spending timer & current balance",
+        "Table merge / split / move orders",
+        "Floorplan Edit mode toggle to place/delete/reposition tables"
+      ]
+    },
+    "order_taking_register": {
+      "layout": "3-column split: Left (Categories & Subcategories), Center (Product Cards & Variants Grid), Right (Live Bill Slip + Hold/Fire Controls)",
+      "features": [
+        "Hold & Fire courses (Starter, Main, Dessert, Drink Round) with delayed kitchen/bar dispatch timers",
+        "Variant modal (e.g. Beer: Pint vs Tower vs Bucket; Steak: Rare/Medium/Well)",
+        "Modifiers & Custom Notes (Extra Lime, No Ice, Less Sugar)",
+        "Discount Panel (% discount, flat HKD cash discount, manager override badge)",
+        "Automatic 10% Service Charge toggle & breakdown",
+        "Order types: Dine-In (linked to table), Pick-Up, Delivery"
+      ]
+    },
+    "payment_screen": {
+      "modes": ["Cash", "Credit Card", "Octopus / Wallet", "Split Bill (By Seat, By Equal Parts, By Custom Amount)"],
+      "automatic_calculations": ["10% Service Charge", "Discounts", "Tip", "Change due"]
+    },
+    "crm_member_database": {
+      "features": [
+        "Member search by phone/name/card ID",
+        "VIP status tiers & Lifetime HKD spend tracking",
+        "Visit history, favorite drinks/items log, average seating duration",
+        "Loyalty points redemption & targeted event invitations"
+      ]
+    },
+    "menu_and_happy_hour_manager": {
+      "features": [
+        "Category & Sub-category CRUD",
+        "Variant & Modifier matrix builder",
+        "Happy Hour Automation Rules (e.g., Mon-Sun 4pm-9pm 20% off Craft Beers & House Spirits)"
+      ]
+    },
+    "staff_permissions": {
+      "roles": ["General Manager", "Head Bartender", "Floor Captain", "Server / Busser"],
+      "access_control": ["Manager discount override limits", "Void item authorization", "End-of-day register float close"]
+    },
+    "sports_events_darts_module": {
+      "features": [
+        "TV Live Sports Channel Schedule board",
+        "Darts Machine queue & active match score log",
+        "Trivia Night registration & team table mapper"
+      ]
+    },
+    "analytics_reports": {
+      "charts": ["Hourly Revenue (11AM to 6AM peak curve)", "Sales by Category (Drinks vs Food vs Darts/Events)", "Top Performing Staff", "Payment Method Share"]
+    }
+  },
+  "image_urls": [
+    {
+      "category": "hero_hk_nightlife",
+      "url": "https://images.unsplash.com/photo-1558252711-ec7df1da0f77?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHw0fHxob25nJTIwa29uZyUyMGJhciUyMG5pZ2h0bGlmZSUyMG5lb24lMjByZXN0YXVyYW50fGVufDB8fHx8MTc4ODk5NTYzNnww&ixlib=rb-4.1.0&q=85",
+      "description": "Hong Kong neon streetscape"
+    },
+    {
+      "category": "cocktails",
+      "url": "https://images.unsplash.com/photo-1598994392980-53a7fb033bcc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHw0fHxjcmFmdCUyMGNvY2t0YWlsJTIwYmFyJTIwZHJpbmslMjBhcHBldGl6ZXIlMjBmb29kfGVufDB8fHx8MTc4ODk5NTYzOXww&ixlib=rb-4.1.0&q=85",
+      "description": "Craft cocktails on bar table"
+    },
+    {
+      "category": "spirits_rocks",
+      "url": "https://images.unsplash.com/photo-1500217052183-bc01eee1a74e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwxfHxjcmFmdCUyMGNvY2t0YWlsJTIwYmFyJTIwZHJpbmslMjBhcHBldGl6ZXIlMjBmb29kfGVufDB8fHx8MTc4ODk5NTYzOXww&ixlib=rb-4.1.0&q=85",
+      "description": "Whiskey on rocks with garnish"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Ensure all interactive buttons and elements include a standard `data-testid` attribute (e.g. data-testid='floorplan-switch-area-backroom', data-testid='order-item-add-button', data-testid='pin-pad-submit').",
+    "Keep styling responsive and touch-screen ready with min 44px tap targets for fast bar staff usage.",
+    "Do not use transparent dropdown or popover backgrounds; always use dark solid background (#121824) with crisp contrast borders (#26334D).",
+    "Use Lucide React icons for tactical POS navigation and table state indicators.",
+    "Ensure Sonner toasts are used for order confirmation, kitchen fire alerts, and payment receipts."
+  ]
+}

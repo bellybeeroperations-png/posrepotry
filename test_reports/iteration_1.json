@@ -1,0 +1,30 @@
+{
+  "summary": "Backend + Frontend E2E for HK Bar POS. All backend endpoints verified: counts (18/9/23/5), table area filter, order lifecycle (create/patch/fire/pay), discount math (percent + cash), void role-gating (bartender 403, manager 200 + table reset), staff CRUD role gating, reports summary keys. Full frontend E2E via public URL passed: login -> floorplan (Main+Terrace=12, Backroom=6) -> click table -> register -> Beer -> Tsingtao -> variant Pint -> add -> disc-percent 20 -> totals recompute (HK$55/-11/4.4/48.4) -> save-order -> pay cash -> payment complete -> returned to /floorplan -> table shows dirty class.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "auth login 4 roles",
+    "GET /tables=18, /categories=9, /products=23, /members=5",
+    "table filter by area_id (Main+Terrace=12)",
+    "POST /api/orders create with variant + held main + starter, totals correct (subtotal 806, svc 80.6, total 886.6)",
+    "PATCH /api/orders discount percent 20% recomputes totals correctly (161.2/64.48/709.28)",
+    "PATCH /api/orders discount cash 50 recomputes (50/75.6/831.6)",
+    "POST /api/orders/{id}/fire?course=main un-holds only main-course held lines (fired=1, main-held-remain=0)",
+    "POST /api/orders/{id}/pay -> status=paid, table becomes dirty, member visits+1, lifetime_spend +886.6, points +88 (int(total//10))",
+    "DELETE /api/orders bartender=403, manager=200; table reset to available with current_order_id=null",
+    "POST /api/staff server=403, manager=200; DELETE /api/staff server=403, manager=200",
+    "GET /api/reports/summary contains total_revenue, total_orders, avg_ticket, by_hour, by_category, by_payment, by_staff",
+    "Frontend login (data.token stored) -> /floorplan renders",
+    "Floorplan area tabs work: Main+Terrace shows 12 tables, Backroom shows 6",
+    "Table click -> /register with correct table/area query params",
+    "Register: Beer category, Tsingtao product, Pint variant modal, variant-add adds line to ticket",
+    "Discount UI (disc-percent + disc-value=20) updates totals-subtotal/service/total live",
+    "Save order -> 'Order saved' toast, then Pay -> Payment modal (cash/card/octopus/wallet)",
+    "pay-method-cash + pay-amount + pay-confirm -> 'Payment complete' toast, returns to /floorplan, target table has table-dirty class"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "GET /api/members/{id} returns nested {member, orders} object (not flat) — worked fine, just a test-script consideration. Payment is MOCKED per spec (records method/amount/tip only, no real charge)."
+}
