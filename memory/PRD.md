@@ -61,6 +61,11 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v20 · Feb 2026 — Iter 28 · P1 Follow-up Fixes)
+- **MemberIn model fields**: added `birth_month: Optional[int]` and `referred_by: Optional[str]` — previously Pydantic silently dropped them so referral bonus + birthday voucher never actually fired.
+- **Feedback dedupe fixed**: `submit_feedback` no longer filters `dupe_q` on `source` (the insert wasn't writing it) — dedupe now works. Insert also writes `source: 'feedback'` for consistency.
+- **Verified live**: M2 with `referred_by=M1.id` persists; feedback dupe returns 400.
+
 ## What's Implemented (v19 · Feb 2026 — Iter 27 · Loyalty P1)
 - **Referral & Sign-Up Bonus**: POST `/api/members` now grants **+100 pts + a HK$50 first-order voucher** on creation. Optional `referred_by` field; on the referred member's first paid order both sides earn **+200 pts + a HK$50 referral voucher** (guarded by `referral_awarded` flag).
 - **Visit-Streak Multiplier**: pay_order tracks `last_visit_week` (ISO year-week) + `streak_weeks`. Consecutive-week visits award `min(500, streak × 50)` bonus points; broken streak resets to 1.

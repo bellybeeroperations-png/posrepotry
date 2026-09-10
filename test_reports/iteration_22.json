@@ -1,0 +1,19 @@
+{
+  "summary": "Iter 28 retest of iter 27 P1 loyalty. Both HIGH bugs verified fixed. 7/7 backend loyalty tests PASS (signup, referral end-to-end w/ double-award guard, HH boost, streak, feedback + dupe 400, birth_month persistence, social share + dupe). MemberIn now correctly persists referred_by and birth_month; feedback dedupe now returns 400 on second submission for same order_id.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter27_loyalty.py", "/app/test_reports/pytest/iter28.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Both fixes are minimal and correct. Feedback insert now writes source='feedback' AND dupe_q dropped its source filter — belt-and-suspenders, safe.",
+    "MemberIn now exposes both referred_by and birth_month with Optional[str]/Optional[int] defaults, matching what on_payment_earn already reads."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter27_loyalty.py (added test_birth_month_persists)"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "n/a (backend only)"},
+  "test_credentials": "admin polymuze111@gmail.com/admin123",
+  "seed_data_creation": "All test members TEST_ prefixed and cleaned up (members + vouchers + orders + feedback + social_shares).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter 27 loyalty P1 fully green. Run with: export $(grep -v '^#' /app/frontend/.env | xargs) && export $(grep -v '^#' /app/backend/.env | xargs) && pytest backend/tests/test_iter27_loyalty.py -n 0",
+  "rca of the issue": "Not applicable — both prior HIGH bugs (referred_by silently dropped by Pydantic; feedback dedupe query/insert schema drift on 'source' key) are resolved."
+}

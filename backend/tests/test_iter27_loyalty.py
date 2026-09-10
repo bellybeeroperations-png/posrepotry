@@ -213,6 +213,17 @@ def test_feedback_voucher_and_dupe(client, tag):
         _cleanup_member(m["id"])
 
 
+# ---------- 5b. Birth month persistence ----------
+def test_birth_month_persists(client, tag):
+    m = _create_member(client, f"{tag}_bm", extra={"birth_month": 3})
+    try:
+        r = client.get(f"{API}/members/{m['id']}")
+        assert r.status_code == 200, r.text
+        assert r.json().get("member", {}).get("birth_month") == 3, f"birth_month not persisted: {r.json()}"
+    finally:
+        _cleanup_member(m["id"])
+
+
 # ---------- 6. Social share ----------
 def test_social_share_award_and_dupe(client, tag):
     m = _create_member(client, f"{tag}_ss")

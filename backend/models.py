@@ -92,6 +92,8 @@ class MemberIn(BaseModel):
     email: Optional[EmailStr] = None
     tier: Literal["Regular", "Silver", "Gold", "VIP"] = "Regular"
     notes: Optional[str] = ""
+    birth_month: Optional[int] = None       # 1-12; used by birthday voucher auto-issue
+    referred_by: Optional[str] = None       # member_id of the referrer (loyalty)
 
 
 # -------- Happy Hour --------
