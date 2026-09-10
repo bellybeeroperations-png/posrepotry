@@ -1,0 +1,24 @@
+{
+  "summary": "Iter 9 cosmetic hardening verified. (a) printable.js still opens blob: URL popup containing 'X REPORT · MID-SHIFT' and 'TOTAL REVENUE' from Shift page btn-x-report. (b) grep of /app/frontend/src returns ZERO occurrences of 'document.write'. (c) Backend /api/reports/summary returns identical shape (total_revenue, total_orders, avg_ticket, by_hour[{hour,revenue}], by_category, by_payment, by_staff) and revenue delta after paying a fresh order == order total. (d) Core order+pay sanity for 'octopus' and 'fps_qr' methods → status=paid. (e) /api/kds still exposes product_id per ticket. No regressions detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter9_reports.py",
+    "/app/test_reports/pytest/iter9.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "printable.js is XSS-safe (Blob URL + window.open), no direct DOM writes.",
+    "reports_summary refactor is a pure cosmetic rename (h → hour) and materialisation of sorted() into hour_items/cat_items/staff_items — response contract preserved.",
+    "server.py is 932 lines — still within acceptable single-module range but approaching the 700-line soft cap; consider splitting into routers when next iterating."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter9_reports.py"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (Shift X-Report blob-URL popup verified)"},
+  "test_credentials": "polymuze111@gmail.com / admin123 (PIN 9999) — worked",
+  "seed_data_creation": "Created transient TEST_iter9 orders and paid them via cash/octopus/fps_qr for revenue-delta assertion.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iter9_reports.py can be reused. Note: /api/orders/{id}/pay requires top-level 'method' AND 'amount' fields in payload (not just splits) — Pydantic model PaymentIn enforces this."
+}

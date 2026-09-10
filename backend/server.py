@@ -603,14 +603,17 @@ async def reports_summary(user: dict = Depends(get_current_user)):
         sname = staff.get(sid, "—")
         by_staff[sname] = by_staff.get(sname, 0) + o.get("total", 0)
 
+    hour_items = sorted(by_hour.items())
+    cat_items = sorted(by_cat.items(), key=lambda x: -x[1])
+    staff_items = sorted(by_staff.items(), key=lambda x: -x[1])
     return {
         "total_revenue": round(total_revenue, 2),
         "total_orders": total_orders,
         "avg_ticket": round(avg_ticket, 2),
-        "by_hour": [{"hour": h, "revenue": round(v, 2)} for h, v in sorted(by_hour.items())],
-        "by_category": [{"name": k, "revenue": round(v, 2)} for k, v in sorted(by_cat.items(), key=lambda x: -x[1])],
+        "by_hour": [{"hour": hour, "revenue": round(v, 2)} for hour, v in hour_items],
+        "by_category": [{"name": k, "revenue": round(v, 2)} for k, v in cat_items],
         "by_payment": [{"name": k, "revenue": round(v, 2)} for k, v in by_pay.items()],
-        "by_staff": [{"name": k, "revenue": round(v, 2)} for k, v in sorted(by_staff.items(), key=lambda x: -x[1])],
+        "by_staff": [{"name": k, "revenue": round(v, 2)} for k, v in staff_items],
     }
 
 
