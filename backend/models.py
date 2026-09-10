@@ -164,3 +164,27 @@ class ReservationIn(BaseModel):
     party_size: int = 2
     reserved_for: str  # ISO datetime
     notes: Optional[str] = ""
+
+
+# -------- Waitlist --------
+class WaitlistIn(BaseModel):
+    name: str
+    phone: str
+    party_size: int = 2
+    quoted_wait_min: int = 15
+    notes: Optional[str] = ""
+
+
+# -------- Combo Deals --------
+class ComboIn(BaseModel):
+    name: str
+    product_ids: List[str]
+    discount_type: Literal["percent", "cash"] = "percent"
+    discount_value: float = 10.0
+    active: bool = True
+
+
+# -------- PIN Verify --------
+class PinVerifyIn(BaseModel):
+    pin: str
+    required_roles: List[str] = ["manager", "admin"]

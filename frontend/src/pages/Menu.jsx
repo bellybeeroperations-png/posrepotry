@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Trash2, Clock, Edit3, Sparkles } from "lucide-react";
+import { Plus, Trash2, Clock, Edit3, Sparkles, Package } from "lucide-react";
 import { ProductEditor, CategoryEditor, HappyHourEditor } from "@/components/pos/editors";
+import { ComboEditor } from "@/components/pos/ComboEditor";
 
 const DAY_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
@@ -10,17 +11,19 @@ export default function Menu() {
   const [cats, setCats] = useState([]);
   const [prods, setProds] = useState([]);
   const [hh, setHh] = useState([]);
+  const [combos, setCombos] = useState([]);
   const [tab, setTab] = useState("products");
   const [filterCat, setFilterCat] = useState("all");
-  const [editingProd, setEditingProd] = useState(null); // null | "new" | product
+  const [editingProd, setEditingProd] = useState(null);
   const [editingCat, setEditingCat] = useState(null);
   const [editingHh, setEditingHh] = useState(null);
+  const [editingCombo, setEditingCombo] = useState(null);
 
   const load = async () => {
-    const [c, p, h] = await Promise.all([
-      api.get("/categories"), api.get("/products"), api.get("/happy-hours"),
+    const [c, p, h, cb] = await Promise.all([
+      api.get("/categories"), api.get("/products"), api.get("/happy-hours"), api.get("/combos"),
     ]);
-    setCats(c.data); setProds(p.data); setHh(h.data);
+    setCats(c.data); setProds(p.data); setHh(h.data); setCombos(cb.data);
   };
   useEffect(() => { load(); }, []);
 
@@ -45,6 +48,13 @@ export default function Menu() {
       toast.success("Happy hour saved"); setEditingHh(null); load();
     } catch (e) { toast.error("Failed"); }
   };
+  const saveCombo = async (data) => {
+    try {
+      if (editingCombo?.id) await api.patch(`/combos/${editingCombo.id}`, data);
+      else await api.post("/combos", data);
+      toast.success("Combo saved"); setEditingCombo(null); load();
+    } catch (e) { toast.error("Failed"); }
+  };
   const del = async (path, name, cb) => {
     if (!confirm(`Delete ${name}?`)) return;
     await api.delete(path); toast.success("Deleted"); cb();
@@ -57,7 +67,7 @@ export default function Menu() {
       <div className="flex items-center gap-3 mb-4">
         <h1 className="font-display text-2xl font-black">Menu Manager</h1>
         <div className="ml-auto flex gap-2">
-          {["products","categories","happy_hour"].map(t => (
+          {["products","categories","happy_hour","combos"].map(t => (
             <button key={t} data-testid={`menu-tab-${t}`} onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-lg font-mono text-xs uppercase tracking-widest border ${
                 tab === t ? "bg-[var(--cyan)] text-black border-transparent" : "bg-[var(--surface)] text-white border-[var(--border)]"
@@ -179,6 +189,45 @@ export default function Menu() {
         </div>
       )}
 
+      {tab === "combos" && (
+        <div>
+          <button data-testid="btn-add-combo" onClick={() => setEditingCombo({})}
+            className="btn-neon px-4 py-2 rounded-lg text-xs uppercase flex items-center gap-2 mb-4">
+            <Plus size={14} /> New Combo Deal
+          </button>
+          {combos.length === 0 && (
+            <div className="p-10 rounded-xl border border-dashed border-[var(--border)] text-center text-[var(--muted)]">
+              No combo deals yet. Bundle 2+ products with an automatic discount when they're on the same ticket.
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            {combos.map(c => {
+              const names = prods.filter(p => c.product_ids.includes(p.id)).map(p => p.name);
+              return (
+                <div key={c.id} className="p-5 rounded-xl border border-[var(--cyan)]/40 bg-[var(--cyan)]/5 group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Package size={16} className="text-[var(--cyan)]" />
+                    <div className="font-display font-black text-lg">{c.name}</div>
+                    <div className={`ml-auto text-[9px] font-mono uppercase px-2 py-0.5 rounded ${c.active ? "bg-[var(--emerald)]/20 text-[var(--emerald)]" : "bg-[var(--surface-2)] text-[var(--muted)]"}`}>
+                      {c.active ? "Active" : "Paused"}
+                    </div>
+                    <button data-testid={`edit-combo-${c.name}`} onClick={() => setEditingCombo(c)} className="text-[var(--cyan)] opacity-0 group-hover:opacity-100"><Edit3 size={14} /></button>
+                    <button data-testid={`del-combo-${c.name}`} onClick={() => del(`/combos/${c.id}`, c.name, load)} className="text-[var(--rose)] opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
+                  </div>
+                  <div className="text-3xl font-display font-black text-[var(--cyan)]">
+                    {c.discount_type === "percent" ? `-${c.discount_value}%` : `-${fmtHKD(c.discount_value)}`}
+                  </div>
+                  <div className="text-[10px] font-mono uppercase text-[var(--muted)] mt-1">When ticket contains:</div>
+                  <div className="text-xs flex flex-wrap gap-1 mt-1">
+                    {names.map((n, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">{n}</span>)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {editingProd && (
         <ProductEditor
           product={editingProd?.id ? editingProd : null}
@@ -192,6 +241,9 @@ export default function Menu() {
       )}
       {editingHh && (
         <HappyHourEditor hh={editingHh?.id ? editingHh : null} categories={cats} onClose={() => setEditingHh(null)} onSave={saveHh} />
+      )}
+      {editingCombo && (
+        <ComboEditor combo={editingCombo?.id ? editingCombo : null} products={prods} onClose={() => setEditingCombo(null)} onSave={saveCombo} />
       )}
     </div>
   );

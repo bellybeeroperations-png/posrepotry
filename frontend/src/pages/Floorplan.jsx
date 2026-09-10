@@ -4,6 +4,7 @@ import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
 import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, DollarSign, AlertCircle, Radio, Trophy, Target } from "lucide-react";
 import { ReservationModal, TableActionModal } from "@/components/pos/Reservations";
+import { QRCode as QRModal } from "@/components/pos/QRCode";
 
 const STATUS_LABELS = {
   available: "Available",
@@ -30,6 +31,7 @@ export default function Floorplan() {
   const [now, setNow] = useState(new Date());
   const [selTable, setSelTable] = useState(null);
   const [reserveTable, setReserveTable] = useState(null);
+  const [qrTable, setQrTable] = useState(null);
   const nav = useNavigate();
 
   const load = async () => {
@@ -312,6 +314,7 @@ export default function Floorplan() {
           onOpen={() => goToOrder(selTable)}
           onReserve={() => { setReserveTable(selTable); setSelTable(null); }}
           onCancel={() => cancelReservation(selTable)}
+          onQR={() => { setQrTable(selTable); setSelTable(null); }}
         />
       )}
       {reserveTable && (
@@ -325,6 +328,7 @@ export default function Floorplan() {
           }}
         />
       )}
+      {qrTable && <QRModal table={qrTable} onClose={() => setQrTable(null)} />}
     </div>
   );
 }

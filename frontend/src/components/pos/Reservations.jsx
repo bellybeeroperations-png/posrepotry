@@ -74,7 +74,7 @@ export function ReservationModal({ table, onClose, onSaved }) {
   );
 }
 
-export function TableActionModal({ table, onClose, onSeat, onCancel, onReserve, onOpen }) {
+export function TableActionModal({ table, onClose, onSeat, onCancel, onReserve, onOpen, onQR }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
@@ -110,6 +110,10 @@ export function TableActionModal({ table, onClose, onSeat, onCancel, onReserve, 
               Reserve
             </button>
           )}
+          <button data-testid="action-qr" onClick={onQR}
+            className="w-full py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--cyan)] font-semibold">
+            Menu QR Code
+          </button>
           {table.reservation && (
             <button data-testid="action-cancel-res" onClick={onCancel}
               className="w-full py-3 rounded-lg bg-[var(--rose)]/10 border border-[var(--rose)] text-[var(--rose)] font-semibold">

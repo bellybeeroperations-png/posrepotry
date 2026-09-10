@@ -7,6 +7,8 @@ import {
   ShoppingBag, Truck, UtensilsCrossed, CreditCard, Wallet, Banknote, Coins,
 } from "lucide-react";
 import Receipt from "@/components/pos/Receipt";
+import ManagerPin from "@/components/pos/ManagerPin";
+import { useAuth } from "@/context/AuthContext";
 
 const COURSES = ["starter", "main", "dessert", "drink", "side", "other"];
 
@@ -22,7 +24,10 @@ export default function Register() {
   const [receiptOrder, setReceiptOrder] = useState(null);
   const [members, setMembers] = useState([]);
   const [memberQ, setMemberQ] = useState("");
-  const [activeHH, setActiveHH] = useState([]); // list of active happy hours
+  const [activeHH, setActiveHH] = useState([]);
+  const [combos, setCombos] = useState([]);
+  const [pinGate, setPinGate] = useState(null); // {action, onOk}
+  const { user } = useAuth();
 
   const orderId = sp.get("order");
   const tableId = sp.get("table");
@@ -50,6 +55,7 @@ export default function Register() {
       if (r.data[0]) setActiveCat(r.data[0].id);
     });
     api.get("/products").then((r) => setProducts(r.data));
+    api.get("/combos").then((r) => setCombos(r.data));
     const loadHH = () => api.get("/happy-hours/active").then((r) => setActiveHH(r.data.active || []));
     loadHH();
     const t = setInterval(loadHH, 60000); // refresh every minute
@@ -76,15 +82,30 @@ export default function Register() {
   const filteredProducts = products.filter((p) => !activeCat || p.category_id === activeCat);
 
   const totals = useMemo(() => {
-    if (!order) return { subtotal: 0, discount: 0, service: 0, total: 0 };
+    if (!order) return { subtotal: 0, discount: 0, service: 0, total: 0, combo_discount: 0, combos_applied: [] };
     const sub = order.lines.reduce((s, l) => s + l.price * l.qty, 0);
     let disc = 0;
     if (order.discount_type === "percent") disc = sub * (order.discount_value / 100);
     else if (order.discount_type === "cash") disc = Math.min(order.discount_value, sub);
-    const net = sub - disc;
+    // Combo detection
+    const linePids = new Set(order.lines.filter(l => (l.qty || 0) > 0).map(l => l.product_id));
+    let comboDisc = 0;
+    const applied = [];
+    combos.forEach(c => {
+      if (!c.active) return;
+      const required = new Set(c.product_ids || []);
+      if (required.size === 0) return;
+      const has = [...required].every(id => linePids.has(id));
+      if (has) {
+        const d = c.discount_type === "percent" ? sub * (c.discount_value / 100) : c.discount_value;
+        comboDisc += d;
+        applied.push({ name: c.name, discount: d });
+      }
+    });
+    const net = Math.max(0, sub - disc - comboDisc);
     const svc = net * (order.service_charge_pct / 100);
-    return { subtotal: sub, discount: disc, service: svc, total: net + svc };
-  }, [order]);
+    return { subtotal: sub, discount: disc, combo_discount: comboDisc, combos_applied: applied, service: svc, total: net + svc };
+  }, [order, combos]);
 
   const addProduct = (p) => {
     if (p.variants?.length > 0) return setVariantModal(p);
@@ -115,12 +136,28 @@ export default function Register() {
     lines[i].qty = Math.max(1, lines[i].qty + d);
     return { ...o, lines };
   });
-  const removeLine = (i) => setOrder((o) => ({ ...o, lines: o.lines.filter((_, idx) => idx !== i) }));
+  const removeLine = (i) => {
+    const doRemove = () => setOrder((o) => ({ ...o, lines: o.lines.filter((_, idx) => idx !== i) }));
+    const isManager = user?.role === "admin" || user?.role === "manager";
+    if (order?.id && !isManager) {
+      // Voiding a saved-order line requires manager PIN
+      setPinGate({ action: `void "${order.lines[i]?.name}"`, onOk: doRemove });
+      return;
+    }
+    doRemove();
+  };
   const toggleHold = (i) => setOrder((o) => {
     const lines = [...o.lines];
     lines[i].held = !lines[i].held;
     return { ...o, lines };
   });
+
+  const repeatRound = () => {
+    if (!order?.lines?.length) return toast.error("Nothing to repeat");
+    const dupes = order.lines.map(l => ({ ...l, held: false, notes: l.notes }));
+    setOrder(o => ({ ...o, lines: [...o.lines, ...dupes] }));
+    toast.success(`Repeated ${dupes.length} item(s)`);
+  };
 
   const saveOrder = async () => {
     if (!order.lines.length) return toast.error("No items");
@@ -381,12 +418,22 @@ export default function Register() {
           <div className="text-xs font-mono space-y-1 text-[var(--muted)]">
             <div className="flex justify-between"><span>Subtotal</span><span data-testid="totals-subtotal">{fmtHKD(totals.subtotal)}</span></div>
             {totals.discount > 0 && <div className="flex justify-between text-[var(--rose)]"><span>Discount</span><span>-{fmtHKD(totals.discount)}</span></div>}
+            {totals.combos_applied?.map((c, i) => (
+              <div key={i} data-testid={`combo-line-${i}`} className="flex justify-between text-[var(--cyan)]">
+                <span>Combo · {c.name}</span>
+                <span>-{fmtHKD(c.discount)}</span>
+              </div>
+            ))}
             <div className="flex justify-between"><span>Service (10%)</span><span data-testid="totals-service">{fmtHKD(totals.service)}</span></div>
             <div className="flex justify-between text-white text-lg font-display font-black pt-1 border-t border-[var(--border)]">
               <span>TOTAL</span><span data-testid="totals-total">{fmtHKD(totals.total)}</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button data-testid="btn-repeat-round" onClick={repeatRound} disabled={!order.lines.length}
+              className="py-2.5 rounded-lg text-xs uppercase font-mono bg-[var(--surface-2)] border border-[var(--border)] disabled:opacity-40">
+              Repeat Round
+            </button>
             <button data-testid="btn-save-order" onClick={saveOrder} className="btn-amber py-2.5 rounded-lg text-sm">
               Save / Send
             </button>
@@ -399,7 +446,7 @@ export default function Register() {
               disabled={!order.lines.length}
               className="btn-neon py-2.5 rounded-lg text-sm disabled:opacity-40"
             >
-              Pay {fmtHKD(totals.total)}
+              Pay
             </button>
           </div>
         </div>
@@ -440,6 +487,14 @@ export default function Register() {
           order={receiptOrder}
           memberName={order?.member_name}
           onClose={() => { setReceiptOrder(null); nav("/floorplan"); }}
+        />
+      )}
+
+      {pinGate && (
+        <ManagerPin
+          action={pinGate.action}
+          onSuccess={() => { pinGate.onOk(); setPinGate(null); }}
+          onClose={() => setPinGate(null)}
         />
       )}
     </div>

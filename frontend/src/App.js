@@ -13,6 +13,8 @@ import Reports from "@/pages/Reports";
 import Events from "@/pages/Events";
 import KDS from "@/pages/KDS";
 import Shift from "@/pages/Shift";
+import MobileMenu from "@/pages/MobileMenu";
+import Waitlist from "@/pages/Waitlist";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -35,6 +37,7 @@ export default function App() {
         <Toaster position="top-right" theme="dark" richColors />
         <Routes>
           <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+          <Route path="/m/:tableId" element={<MobileMenu />} />
           <Route path="/" element={<Navigate to="/floorplan" replace />} />
           <Route path="/floorplan" element={<Protected><Floorplan /></Protected>} />
           <Route path="/register" element={<Protected><Register /></Protected>} />
@@ -45,6 +48,7 @@ export default function App() {
           <Route path="/events" element={<Protected><Events /></Protected>} />
           <Route path="/kds" element={<Protected><KDS /></Protected>} />
           <Route path="/shift" element={<Protected><Shift /></Protected>} />
+          <Route path="/waitlist" element={<Protected><Waitlist /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

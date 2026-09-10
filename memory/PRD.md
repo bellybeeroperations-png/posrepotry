@@ -16,6 +16,14 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - DB: MongoDB `hkbar_pos` — collections `users`, `areas`, `tables`, `categories`, `products`, `orders`, `members`, `happy_hours`
 - Theme: Hong Kong neon cyberpunk dark mode (`#0B0E14` bg, `#00F2FE` cyan, `#FFB800` amber, distinct table-state colors)
 
+## What's Implemented (v4 · Feb 2026 iteration)
+- **Dark Menu QR**: public `/m/:tableId` mobile menu (no auth) with search, category chips, happy-hour banner, discounted pricing. QRCode modal from any Floorplan table with copy-link and printable QR card.
+- **Live Waitlist** (`/waitlist`): add form (name/phone/party/quote), stat KPIs (waiting/notified/covers/avg wait), per-row Text (mocked SMS with actual message string in toast), Seat, Cancel. Overdue rows turn rose; notified rows turn cyan.
+- **Combo Deals**: `/api/combos` CRUD + auto-apply engine. ComboEditor picks 2+ required products and discount type/value. Register live-detects combos and adds a cyan `Combo · <name>` line to totals; backend also applies on order create/update.
+- **Manager Voids**: intercepts line-delete on saved orders for non-manager users → ManagerPin modal with keypad (PIN verified via `/api/auth/pin-verify` with role check).
+- **Bonus — Repeat Round**: `btn-repeat-round` duplicates every current line for regulars ordering the same round again.
+- Backend + frontend testing agent 100% pass on iteration 4.
+
 ## What's Implemented (v3 · Feb 2026 iteration)
 - **Kitchen Display System (/kds)**: fired-but-not-bumped items grouped with station filter (All/Kitchen/Bar), age-coloured cards (green <5m, amber <10m, red >10m pulsing), tap-to-bump with instant removal, KPI cards for total/food/drink/late
 - **Shift Reports (/shift)**: clock-in / clock-out per staff, live shift KPIs (revenue, orders, covers, tips, avg ticket, payment mix), printable X-report mid-shift and Z-report on close (opens a formatted receipt-style popup for the printer), history of past shifts with per-row print button
@@ -46,6 +54,49 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 ## Test Coverage
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
+
+## Prioritized Backlog (from user's expanded HK Bar spec)
+
+### P0 · Fast Bar Ops (next up)
+- 1.01 One-Tap Quick Bar Mode — dedicated bartender screen with big-tile drinks + auto-fire
+- 1.02 Pre-Authorized Bar Tabs — swipe card to open, prevents walk-outs
+- 1.03 Move/split/merge items between seats (extends split payments)
+- 1.05 Named Tab Search — find open tabs by name / description / seat
+- 1.06 Auto-Close Tabs at Last Call — batch-settle to preauth cards at 03:00
+- 1.09 already done (PIN quick-switch)
+- 1.10 Multi-tier Happy Hours (3 windows) — extends current single-window engine
+
+### P0 · KDS/BDS enhancements
+- 3.01 Isolated Station Routing (kitchen/service-bar/food) — extend current KDS station filter
+- 3.03 Consolidated Prep Views ("7 burgers total")
+- 3.04 Dine-in vs Take-Away color borders
+- 3.05 Allergen / Modification flashing
+- 3.06 One-Touch 86ing (product-level "out of stock")
+- 3.08 Zone-based printer routing
+
+### P0 · HK Payments
+- 4.01 Octopus Card hardware integration
+- 4.02 FPS QR generation
+- 4.03 AlipayHK / WeChat Pay HK / PayMe / UnionPay
+- 4.04 Foodpanda / Deliveroo / KeeTa order ingestion
+- 4.06 Dual-language receipts (Traditional Chinese + English)
+- 4.07 already done (mixed payment via split)
+- 4.08 already done (10% service + separate tips)
+
+### P1 · Draught & Inventory
+- 2.01 Tap-level volume tracking (35+ taps)
+- 2.03 Keg threshold alerts (<10%)
+- 2.04 Digital tap-list push to QR menu on keg-blown
+- 2.05 Cocktail ml-level modifiers
+- 2.06 Substitution triggers ("this IPA is out, try Hazy Pale?")
+- 2.09 Keg deposit / return ledger
+- 2.10 Keg life curve (days-open vs pour velocity)
+
+### P2
+- 1.04 Offline Processing Mode
+- 2.08 Batch cocktail recipe depletion
+- 3.02 (already covered by KDS colour timers)
+- 3.07 Delayed cook sync (marked overkill by user)
 
 ## Prioritized Backlog
 

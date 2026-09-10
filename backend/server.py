@@ -24,6 +24,7 @@ from auth import (
 from models import (
     LoginIn, PinLoginIn, CategoryIn, ProductIn, AreaIn, TableIn, TablePosIn,
     MemberIn, HappyHourIn, OrderIn, OrderUpdate, PaymentIn, StaffIn, ReservationIn,
+    WaitlistIn, ComboIn, PinVerifyIn,
 )
 from seed import seed_all
 
@@ -310,23 +311,50 @@ async def delete_member(mid: str, user: dict = Depends(get_current_user)):
 
 
 # ===================== ORDERS =====================
-def _compute_totals(lines, discount_type, discount_value, service_charge_pct):
+def _compute_totals(lines, discount_type, discount_value, service_charge_pct, combos=None):
     subtotal = sum(l["price"] * l["qty"] for l in lines)
+    combo_discount = 0.0
+    combos_applied = []
+    if combos:
+        line_pids = {l.get("product_id") for l in lines if (l.get("qty") or 0) > 0}
+        for c in combos:
+            if not c.get("active", True):
+                continue
+            required = set(c.get("product_ids") or [])
+            if required and required.issubset(line_pids):
+                d = 0.0
+                if c.get("discount_type") == "percent":
+                    d = subtotal * (c.get("discount_value", 0) / 100)
+                else:
+                    d = c.get("discount_value", 0)
+                combo_discount += d
+                combos_applied.append({
+                    "name": c.get("name"),
+                    "discount_type": c.get("discount_type"),
+                    "discount_value": c.get("discount_value"),
+                    "applied_discount": round(d, 2),
+                })
     if discount_type == "percent":
         discount = subtotal * (discount_value / 100.0)
     elif discount_type == "cash":
         discount = min(discount_value, subtotal)
     else:
         discount = 0.0
-    net = subtotal - discount
+    net = max(0.0, subtotal - discount - combo_discount)
     service = round(net * (service_charge_pct / 100.0), 2)
     total = round(net + service, 2)
     return {
         "subtotal": round(subtotal, 2),
         "discount": round(discount, 2),
+        "combo_discount": round(combo_discount, 2),
+        "combos_applied": combos_applied,
         "service_charge": service,
         "total": total,
     }
+
+
+async def _active_combos():
+    return await db.combos.find({"active": True}).to_list(200)
 
 
 @api.get("/orders")
@@ -346,7 +374,8 @@ async def get_order(oid: str, user: dict = Depends(get_current_user)):
 @api.post("/orders")
 async def create_order(body: OrderIn, user: dict = Depends(get_current_user)):
     lines = [l.model_dump() for l in body.lines]
-    totals = _compute_totals(lines, body.discount_type, body.discount_value, body.service_charge_pct)
+    combos = await _active_combos()
+    totals = _compute_totals(lines, body.discount_type, body.discount_value, body.service_charge_pct, combos)
     doc = body.model_dump()
     doc["lines"] = lines
     doc.update(totals)
@@ -371,6 +400,7 @@ async def update_order(oid: str, body: OrderUpdate, user: dict = Depends(get_cur
     if not existing:
         raise HTTPException(404, "Not found")
     update = {k: v for k, v in body.model_dump().items() if v is not None}
+    combos = await _active_combos()
     if "lines" in update:
         lines = update["lines"]
         totals = _compute_totals(
@@ -378,6 +408,7 @@ async def update_order(oid: str, body: OrderUpdate, user: dict = Depends(get_cur
             update.get("discount_type", existing.get("discount_type", "none")),
             update.get("discount_value", existing.get("discount_value", 0)),
             existing.get("service_charge_pct", 10),
+            combos,
         )
         update.update(totals)
     elif "discount_type" in update or "discount_value" in update:
@@ -386,6 +417,7 @@ async def update_order(oid: str, body: OrderUpdate, user: dict = Depends(get_cur
             update.get("discount_type", existing.get("discount_type", "none")),
             update.get("discount_value", existing.get("discount_value", 0)),
             existing.get("service_charge_pct", 10),
+            combos,
         )
         update.update(totals)
     await db.orders.update_one({"_id": _oid(oid)}, {"$set": update})
@@ -747,8 +779,117 @@ async def cancel_reservation(rid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+# ===================== PUBLIC (no auth) =====================
+@api.get("/public/menu/{table_id}")
+async def public_menu(table_id: str):
+    try:
+        t = await db.tables.find_one({"_id": _oid(table_id)})
+    except Exception:
+        raise HTTPException(404, "Table not found")
+    if not t:
+        raise HTTPException(404, "Table not found")
+    area = await db.areas.find_one({"_id": _oid(t["area_id"])}) if t.get("area_id") else None
+    cats = sl(await db.categories.find().to_list(500))
+    raw = await db.products.find({}).to_list(2000)
+    prods = sl([p for p in raw if not p.get("eightysix", False) and p.get("active", True)])
+    now_hk = datetime.now(HK_TZ)
+    hhs = await db.happy_hours.find({"active": True}).to_list(50)
+    active = [serialize(h) for h in hhs if _is_hh_active(h, now_hk)]
+    return {
+        "table": serialize(t),
+        "area": serialize(area) if area else None,
+        "categories": cats,
+        "products": prods,
+        "active_hh": active,
+    }
+
+
+# ===================== WAITLIST =====================
+@api.get("/waitlist")
+async def list_waitlist(user: dict = Depends(get_current_user)):
+    q = {"status": {"$in": ["waiting", "notified"]}}
+    return sl(await db.waitlist.find(q).sort("added_at", 1).to_list(200))
+
+
+@api.post("/waitlist")
+async def add_waitlist(body: WaitlistIn, user: dict = Depends(get_current_user)):
+    doc = body.model_dump()
+    doc.update({
+        "status": "waiting",
+        "added_at": datetime.now(timezone.utc).isoformat(),
+        "notified_at": None,
+    })
+    r = await db.waitlist.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+@api.post("/waitlist/{wid}/notify")
+async def notify_waitlist(wid: str, user: dict = Depends(get_current_user)):
+    w = await db.waitlist.find_one({"_id": _oid(wid)})
+    if not w:
+        raise HTTPException(404, "Not found")
+    await db.waitlist.update_one(
+        {"_id": _oid(wid)},
+        {"$set": {"status": "notified", "notified_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # MOCKED SMS — record the intent, no real send
+    return {"ok": True, "mocked_sms_to": w["phone"], "message": f"Hi {w['name']}, your table is ready at HK Bar!"}
+
+
+@api.post("/waitlist/{wid}/seat")
+async def seat_waitlist(wid: str, user: dict = Depends(get_current_user)):
+    await db.waitlist.update_one({"_id": _oid(wid)}, {"$set": {"status": "seated"}})
+    return {"ok": True}
+
+
+@api.delete("/waitlist/{wid}")
+async def cancel_waitlist(wid: str, user: dict = Depends(get_current_user)):
+    await db.waitlist.update_one({"_id": _oid(wid)}, {"$set": {"status": "cancelled"}})
+    return {"ok": True}
+
+
+# ===================== COMBOS =====================
+@api.get("/combos")
+async def list_combos(user: dict = Depends(get_current_user)):
+    return sl(await db.combos.find().to_list(100))
+
+
+@api.post("/combos")
+async def create_combo(body: ComboIn, user: dict = Depends(get_current_user)):
+    doc = body.model_dump()
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    r = await db.combos.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+@api.patch("/combos/{cid}")
+async def update_combo(cid: str, body: ComboIn, user: dict = Depends(get_current_user)):
+    await db.combos.update_one({"_id": _oid(cid)}, {"$set": body.model_dump()})
+    return serialize(await db.combos.find_one({"_id": _oid(cid)}))
+
+
+@api.delete("/combos/{cid}")
+async def delete_combo(cid: str, user: dict = Depends(get_current_user)):
+    await db.combos.delete_one({"_id": _oid(cid)})
+    return {"ok": True}
+
+
+# ===================== PIN VERIFY (manager override) =====================
+@api.post("/auth/pin-verify")
+async def pin_verify(body: PinVerifyIn):
+    u = await db.users.find_one({"pin": body.pin, "active": True})
+    if not u:
+        raise HTTPException(401, "Invalid PIN")
+    if u["role"] not in body.required_roles:
+        raise HTTPException(403, f"Requires one of: {', '.join(body.required_roles)}")
+    return {"valid": True, "user_id": str(u["_id"]), "name": u["name"], "role": u["role"]}
+
+
 # ===================== BOOTSTRAP =====================
 app.include_router(api)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
