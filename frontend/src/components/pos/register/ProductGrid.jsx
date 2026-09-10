@@ -1,10 +1,19 @@
 import { fmtHKD } from "@/lib/api";
 import { Ban } from "lucide-react";
 
-/** Product grid with category filter, HH pricing, and 86'd overlay. */
-export default function ProductGrid({ products, categories, activeCat, setActiveCat, onPick, hhFor, hhPrice, user }) {
+/** Product grid with category filter, HH pricing, 86'd overlay + secret-menu gating. */
+export default function ProductGrid({ products, categories, activeCat, setActiveCat, onPick, hhFor, hhPrice, user, memberTier }) {
   const isManager = user?.role === "admin" || user?.role === "manager";
-  const filtered = products.filter((p) => !activeCat || p.category_id === activeCat);
+  const TIER_RANK = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
+  const memberRank = TIER_RANK[memberTier] || 0;
+  const filtered = products
+    .filter((p) => !activeCat || p.category_id === activeCat)
+    // Hide products whose min_tier exceeds the attached member's tier (staff always see all)
+    .filter((p) => {
+      if (!p.min_tier) return true;
+      if (isManager) return true;
+      return memberRank >= (TIER_RANK[p.min_tier] || 99);
+    });
 
   return (
     <>

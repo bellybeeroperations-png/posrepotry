@@ -61,6 +61,12 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v21 · Feb 2026 — Iter 29 · P2 Loyalty + Stripe UX)
+- **Loyalty Push Composer** — `POST /api/loyalty/push/preview` + `POST /api/loyalty/push/send` (manager-only). Segment by tier + inactivity days + min spend; issues time-boxed vouchers to every match and logs to `push_log` (channel MOCKED: `whatsapp | sms | email`). New "Push Composer" card on /loyalty page with preview → confirm blast flow.
+- **Secret Menu Unlock** — `ProductIn.min_tier` field (Bronze/Silver/Gold/Platinum). `ProductGrid` filters out products whose `min_tier` exceeds the attached member's tier. Staff (admin/manager) always see everything.
+- **Stripe Elements wire-up** — Installed `@stripe/stripe-js` + `@stripe/react-stripe-js`. `PreauthModal` now embeds a real Stripe `CardElement` after SetupIntent create; on `Confirm Card` it calls `stripe.confirmCardSetup(clientSecret, ...)` then hits `/api/tabs/preauth/complete` to attach the payment method. Test card: `4242 4242 4242 4242`.
+- **Verified**: push preview 7 members / send returns MOCKED confirmation; ProductIn `min_tier` now persists (was silently dropped before the model fix).
+
 ## What's Implemented (v20 · Feb 2026 — Iter 28 · P1 Follow-up Fixes)
 - **MemberIn model fields**: added `birth_month: Optional[int]` and `referred_by: Optional[str]` — previously Pydantic silently dropped them so referral bonus + birthday voucher never actually fired.
 - **Feedback dedupe fixed**: `submit_feedback` no longer filters `dupe_q` on `source` (the insert wasn't writing it) — dedupe now works. Insert also writes `source: 'feedback'` for consistency.

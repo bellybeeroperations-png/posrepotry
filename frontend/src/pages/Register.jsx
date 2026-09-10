@@ -308,6 +308,17 @@ export default function Register() {
         activeCat={activeCat} setActiveCat={setActiveCat}
         onPick={addProduct} hhFor={hhFor} hhPrice={hhPrice}
         user={user}
+        memberTier={
+          order?.member_id
+            ? (() => {
+                const spend = members.find((m) => m.id === order.member_id)?.lifetime_spend || 0;
+                if (spend >= 50000) return "Platinum";
+                if (spend >= 15000) return "Gold";
+                if (spend >= 5000) return "Silver";
+                return "Bronze";
+              })()
+            : null
+        }
       />
 
       <CartTicket

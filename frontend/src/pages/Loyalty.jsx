@@ -248,10 +248,96 @@ export default function Loyalty() {
             </div>
           </div>
         </div>
+
+        {/* Push Composer (manager only) */}
+        <PushComposer />
       </div>
     </div>
   );
 }
+
+function PushComposer() {
+  const [tier, setTier] = useState("Gold");
+  const [days, setDays] = useState(14);
+  const [title, setTitle] = useState("We miss you — HK$50 off this week");
+  const [amount, setAmount] = useState(50);
+  const [ttl, setTtl] = useState(7);
+  const [channel, setChannel] = useState("whatsapp");
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const body = { tier, days_inactive: days, title, discount_type: "cash", discount_value: amount, ttl_days: ttl, channel };
+  const doPreview = async () => {
+    setBusy(true);
+    try { const r = await api.post("/loyalty/push/preview", body); setPreview(r.data); }
+    catch (e) { toast.error(e?.response?.data?.detail || "Preview failed"); }
+    finally { setBusy(false); }
+  };
+  const doSend = async () => {
+    if (!preview?.count) { toast.error("Preview first"); return; }
+    if (!confirm(`Blast a HK$${amount} voucher to ${preview.count} member(s) via ${channel.toUpperCase()}?`)) return;
+    setBusy(true);
+    try {
+      const r = await api.post("/loyalty/push/send", body);
+      toast.success(`Sent · ${r.data.issued} vouchers via ${r.data.channel.toUpperCase()} (MOCKED)`);
+      setPreview(null);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Send failed"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="col-span-2 p-4 rounded-xl border border-[var(--rose)]/30 bg-[var(--rose)]/5">
+      <div className="text-xs font-mono uppercase text-[var(--rose)] mb-3 flex items-center gap-1">
+        <Zap size={12} /> Loyalty Push Composer · manager-only · MOCKED send
+      </div>
+      <div className="grid grid-cols-6 gap-2 mb-3 text-xs">
+        <label>Segment tier
+          <select value={tier} onChange={(e) => setTier(e.target.value)} className={ipt} data-testid="push-tier">
+            {["Bronze","Silver","Gold","Platinum"].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </label>
+        <label>Inactive ≥ (days)
+          <input type="number" value={days} onChange={(e) => setDays(+e.target.value)} className={ipt} data-testid="push-days" />
+        </label>
+        <label className="col-span-2">Title
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className={ipt} data-testid="push-title" />
+        </label>
+        <label>HK$ off
+          <input type="number" value={amount} onChange={(e) => setAmount(+e.target.value)} className={ipt} data-testid="push-amount" />
+        </label>
+        <label>TTL days
+          <input type="number" value={ttl} onChange={(e) => setTtl(+e.target.value)} className={ipt} data-testid="push-ttl" />
+        </label>
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-[10px] font-mono uppercase text-[var(--muted)] mr-2">Channel</div>
+        {["whatsapp","sms","email"].map((c) => (
+          <button key={c} onClick={() => setChannel(c)} data-testid={`push-ch-${c}`}
+            className={`px-2 py-1 rounded text-[10px] font-mono uppercase border ${
+              channel === c ? "bg-[var(--rose)]/20 border-[var(--rose)] text-[var(--rose)]" : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--muted)]"
+            }`}>{c}</button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button data-testid="push-preview" onClick={doPreview} disabled={busy}
+          className="px-4 py-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono uppercase disabled:opacity-40">
+          {busy ? "…" : "Preview segment"}
+        </button>
+        <button data-testid="push-send" onClick={doSend} disabled={busy || !preview?.count}
+          className="btn-neon px-4 py-2 rounded-lg text-xs uppercase disabled:opacity-40">
+          Send blast
+        </button>
+        {preview && (
+          <div data-testid="push-preview-result" className="ml-auto text-xs font-mono text-[var(--muted)] self-center">
+            {preview.count} member(s) match
+            {preview.sample?.length ? ` · e.g. ${preview.sample.map((s) => s.name).join(", ")}` : ""}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+const ipt = "w-full mt-1 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1 text-sm";
 
 const Kpi = ({ label, value, testid }) => (
   <div data-testid={testid} className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)]">

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from deps import db, _oid, serialize, sl
 from auth import make_current_user_dep
-from models import FeedbackIn, SocialShareIn
+from models import FeedbackIn, SocialShareIn, PushSegmentIn
 
 get_current_user = make_current_user_dep(lambda: db)
 router = APIRouter(prefix="/api/loyalty", tags=["loyalty"])
@@ -387,3 +387,64 @@ async def social_share(member_id: str, body: SocialShareIn, user: dict = Depends
                                        "logged_by": user["id"]})
     await db.members.update_one({"_id": _oid(member_id)}, {"$inc": {"points": 25}})
     return {"ok": True, "points_awarded": 25, "platform": body.platform}
+
+
+# --- Push Composer — segment blast (MOCKED SMS/WhatsApp send) ---
+async def _match_segment(seg: PushSegmentIn):
+    q = {}
+    if seg.tier:
+        # Tier is derived from lifetime_spend; translate to min range
+        band = next((t for t in TIERS if t["name"] == seg.tier), None)
+        if band:
+            idx = TIERS.index(band)
+            upper = TIERS[idx + 1]["min_spend"] if idx + 1 < len(TIERS) else float("inf")
+            q["lifetime_spend"] = {"$gte": band["min_spend"], "$lt": upper}
+    if seg.min_lifetime_spend:
+        q.setdefault("lifetime_spend", {})["$gte"] = seg.min_lifetime_spend
+    members = await db.members.find(q).to_list(2000)
+    if seg.days_inactive:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=seg.days_inactive)
+        filtered = []
+        for m in members:
+            # inactive if never visited OR last order.closed_at older than cutoff
+            last_order = await db.orders.find_one(
+                {"member_id": str(m["_id"]), "status": "paid"}, sort=[("closed_at", -1)]
+            )
+            if not last_order:
+                filtered.append(m)
+            elif last_order.get("closed_at") and datetime.fromisoformat(last_order["closed_at"]) < cutoff:
+                filtered.append(m)
+        members = filtered
+    return members
+
+
+@router.post("/push/preview")
+async def push_preview(body: PushSegmentIn, user: dict = Depends(get_current_user)):
+    members = await _match_segment(body)
+    return {"count": len(members), "sample": [{"id": str(m["_id"]), "name": m["name"], "phone": m.get("phone")} for m in members[:5]]}
+
+
+@router.post("/push/send")
+async def push_send(body: PushSegmentIn, user: dict = Depends(get_current_user)):
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(403, "Manager only")
+    members = await _match_segment(body)
+    issued = 0
+    for m in members:
+        v = await _issue_voucher(
+            member_id=str(m["_id"]), kind="push",
+            title=body.title,
+            discount_type=body.discount_type, discount_value=body.discount_value,
+            source="push_composer", ttl_days=body.ttl_days,
+        )
+        # Log mocked send — real SMS/WhatsApp integration lands later
+        await db.push_log.insert_one({
+            "member_id": str(m["_id"]), "member_name": m.get("name"),
+            "phone": m.get("phone"), "channel": body.channel,
+            "voucher_id": v["id"], "voucher_code": v["code"],
+            "title": body.title, "sent_by": user["id"],
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "status": "MOCKED",
+        })
+        issued += 1
+    return {"issued": issued, "channel": body.channel, "note": "MOCKED — real SMS/WhatsApp send not wired"}

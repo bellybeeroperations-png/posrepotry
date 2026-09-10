@@ -57,6 +57,7 @@ class ProductIn(BaseModel):
     happy_hour_eligible: bool = False
     description: Optional[str] = ""
     image: Optional[str] = None
+    min_tier: Optional[Literal["Bronze", "Silver", "Gold", "Platinum"]] = None  # Secret Menu gate
 
 
 # -------- Floorplan --------
@@ -267,6 +268,19 @@ class FeedbackIn(BaseModel):
 class SocialShareIn(BaseModel):
     platform: Literal["instagram", "facebook", "tiktok", "wechat", "whatsapp", "x"] = "instagram"
     url: Optional[str] = None
+
+
+class PushSegmentIn(BaseModel):
+    """Loyalty push composer — target a member segment and blast a voucher.
+    channel is MOCKED (no real SMS/WhatsApp send; we log the intent + issue the voucher)."""
+    tier: Optional[Literal["Bronze", "Silver", "Gold", "Platinum"]] = None
+    days_inactive: Optional[int] = None  # e.g. 14 = haven't visited in 14+ days
+    min_lifetime_spend: Optional[float] = None
+    title: str
+    discount_type: Literal["percent", "cash"] = "cash"
+    discount_value: float = 20.0
+    ttl_days: int = 14
+    channel: Literal["sms", "whatsapp", "email"] = "whatsapp"
 
 
 class UpsellNudgeIn(BaseModel):
