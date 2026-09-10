@@ -3,12 +3,14 @@ vouchers, birthday auto-issue. Auto-hooked from orders.pay_order."""
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import secrets
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from deps import db, _oid, serialize, sl
 from auth import make_current_user_dep
+from models import FeedbackIn, SocialShareIn
 
 get_current_user = make_current_user_dep(lambda: db)
 router = APIRouter(prefix="/api/loyalty", tags=["loyalty"])
@@ -274,4 +276,114 @@ async def on_payment_earn(member_doc: dict, order_doc: dict):
             )
             awards.append({"kind": "voucher", "title": v["title"], "voucher": v})
 
+    # --- Happy-Hour points boost (2× base points during any active window) ---
+    active_hh = await db.happy_hours.find({"active": True}).to_list(50)
+    if active_hh:
+        now = datetime.now(ZoneInfo("Asia/Hong_Kong"))
+        cur = now.strftime("%H:%M")
+        in_window = False
+        for h in active_hh:
+            s, e = h.get("start_time"), h.get("end_time")
+            days = h.get("days") or []
+            if days and now.weekday() not in days:
+                continue
+            if not s or not e:
+                continue
+            if (s <= e and s <= cur <= e) or (s > e and (cur >= s or cur <= e)):
+                in_window = True
+                break
+        if in_window and base_pts > 0:
+            await db.members.update_one({"_id": member_doc["_id"]}, {"$inc": {"points": base_pts}})
+            awards.append({"kind": "points", "value": base_pts, "title": f"+{base_pts} HH boost (2×)"})
+
+    # --- Visit-streak bonus (consecutive ISO weeks) ---
+    now_hk = datetime.now(ZoneInfo("Asia/Hong_Kong"))
+    iso_year, iso_week, _ = now_hk.isocalendar()
+    key = f"{iso_year}-W{iso_week:02d}"
+    last_wk = member_doc.get("last_visit_week")
+    streak = member_doc.get("streak_weeks", 0) or 0
+    streak_award = 0
+    if last_wk == key:
+        pass  # same week, no change
+    else:
+        # Was last week consecutive?
+        try:
+            ly, lw = int(last_wk.split("-W")[0]), int(last_wk.split("-W")[1]) if last_wk else (None, None)
+        except Exception:
+            ly, lw = None, None
+        consecutive = False
+        if ly and lw:
+            # Simple: same year & lw+1==iso_week; OR crossing year boundary at week 52/53→1
+            consecutive = (ly == iso_year and lw + 1 == iso_week) or \
+                          (ly == iso_year - 1 and iso_week == 1 and lw in (52, 53))
+        streak = streak + 1 if consecutive else 1
+        streak_update = {"last_visit_week": key, "streak_weeks": streak}
+        await db.members.update_one({"_id": member_doc["_id"]}, {"$set": streak_update})
+        if streak >= 2:
+            streak_award = min(500, streak * 50)
+            await db.members.update_one({"_id": member_doc["_id"]}, {"$inc": {"points": streak_award}})
+            awards.append({"kind": "points", "value": streak_award,
+                           "title": f"+{streak_award} streak bonus · {streak}-week run"})
+
+    # --- Referral first-order bonus (fires once per referred member) ---
+    ref = member_doc.get("referred_by")
+    if ref and not member_doc.get("referral_awarded"):
+        try:
+            await db.members.update_one({"_id": member_doc["_id"]}, {"$set": {"referral_awarded": True}, "$inc": {"points": 200}})
+            await db.members.update_one({"_id": _oid(ref)}, {"$inc": {"points": 200}})
+            v_new = await _issue_voucher(member_id=str(member_doc["_id"]), kind="referral",
+                                         title="Thanks for joining — HK$50 off",
+                                         discount_type="cash", discount_value=50.0, source="referral_new")
+            v_ref = await _issue_voucher(member_id=ref, kind="referral",
+                                         title="Referral reward — HK$50 off",
+                                         discount_type="cash", discount_value=50.0, source="referral_ref")
+            awards.append({"kind": "voucher", "title": v_new["title"], "voucher": v_new})
+            awards.append({"kind": "referral_ref", "title": f"Referrer +200pts + voucher (member {ref[:6]}…)",
+                           "value": ref, "voucher": v_ref})
+        except Exception:
+            pass
+
     return awards
+
+
+# --- Engagement endpoints (feedback + social share) ---
+@router.post("/feedback/{member_id}")
+async def submit_feedback(member_id: str, body: FeedbackIn, user: dict = Depends(get_current_user)):
+    """Reward completed post-visit feedback with a small voucher (HK$20).
+    One reward per order (or per member/day if order_id omitted)."""
+    m = await db.members.find_one({"_id": _oid(member_id)})
+    if not m:
+        raise HTTPException(404, "Member not found")
+    dupe_q = {"member_id": member_id}
+    if body.order_id:
+        dupe_q["order_id"] = body.order_id
+    else:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        dupe_q["created_at"] = {"$gte": cutoff}
+    dupe = await db.feedback.find_one(dupe_q)
+    if dupe:
+        raise HTTPException(400, "Feedback already logged for this order/window")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.feedback.insert_one({**body.model_dump(), "member_id": member_id, "created_at": now,
+                                  "source": "feedback", "logged_by": user["id"]})
+    v = await _issue_voucher(member_id=member_id, kind="feedback",
+                             title="Thanks for the feedback — HK$20 off",
+                             discount_type="cash", discount_value=20.0, source="feedback", ttl_days=45)
+    return {"ok": True, "voucher": v}
+
+
+@router.post("/social-share/{member_id}")
+async def social_share(member_id: str, body: SocialShareIn, user: dict = Depends(get_current_user)):
+    """Reward tagging the venue (once/day/member) with +25 points."""
+    m = await db.members.find_one({"_id": _oid(member_id)})
+    if not m:
+        raise HTTPException(404, "Member not found")
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    dupe = await db.social_shares.find_one({"member_id": member_id, "created_at": {"$gte": cutoff}})
+    if dupe:
+        raise HTTPException(400, "Already claimed a share reward in the last 24h")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.social_shares.insert_one({**body.model_dump(), "member_id": member_id, "created_at": now,
+                                       "logged_by": user["id"]})
+    await db.members.update_one({"_id": _oid(member_id)}, {"$inc": {"points": 25}})
+    return {"ok": True, "points_awarded": 25, "platform": body.platform}

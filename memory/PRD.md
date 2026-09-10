@@ -61,6 +61,16 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v19 · Feb 2026 — Iter 27 · Loyalty P1)
+- **Referral & Sign-Up Bonus**: POST `/api/members` now grants **+100 pts + a HK$50 first-order voucher** on creation. Optional `referred_by` field; on the referred member's first paid order both sides earn **+200 pts + a HK$50 referral voucher** (guarded by `referral_awarded` flag).
+- **Visit-Streak Multiplier**: pay_order tracks `last_visit_week` (ISO year-week) + `streak_weeks`. Consecutive-week visits award `min(500, streak × 50)` bonus points; broken streak resets to 1.
+- **Happy-Hour Points Boost**: if any `happy_hour.active` window covers the payment moment (HK tz, cross-midnight aware), the base points earn is **doubled** and a "+X HH boost (2×)" award is recorded.
+- **Feedback & Social-Share Rewards**: two new endpoints:
+  - `POST /api/loyalty/feedback/{member_id}` {rating, comment, order_id?} → issues HK$20 voucher (1/order or 1/24h). 
+  - `POST /api/loyalty/social-share/{member_id}` {platform} → +25 pts (1/24h/member).
+- **/loyalty page** gained an "Engagement Rewards" card with 5-star feedback picker + 5 platform share chips.
+- **Verified via curl**: sign-up bonus (100 pts + voucher), feedback voucher, social share (+25), dupe protection (400).
+
 ## What's Implemented (v18 · Feb 2026 — Iter 26 · Loyalty Follow-ups)
 - **Tier-promotion detection fix**: `orders.pay_order` now snapshots the member BEFORE `$set` and passes the pre-payment `lifetime_spend` into `loyalty.on_payment_earn`, so the "Promoted to X" award actually fires when the current order crosses a threshold (previously dead code — pre & post spend were identical).
 - **Loyalty progress bar math fix**: `Loyalty.jsx` now computes progress relative to the *band* between the current and next tier (`(spend - currentMin) / (nextMin - currentMin)`) instead of the raw next-tier ratio. Bronze @ HK$1200 now renders ~24% of the way to Silver, not misleading numbers.

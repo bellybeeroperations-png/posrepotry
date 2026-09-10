@@ -255,6 +255,18 @@ class PreauthCompleteIn(BaseModel):
     setup_intent_id: str
 
 
+# -------- Loyalty engagement --------
+class FeedbackIn(BaseModel):
+    order_id: Optional[str] = None
+    rating: int  # 1-5
+    comment: Optional[str] = ""
+
+
+class SocialShareIn(BaseModel):
+    platform: Literal["instagram", "facebook", "tiktok", "wechat", "whatsapp", "x"] = "instagram"
+    url: Optional[str] = None
+
+
 class UpsellNudgeIn(BaseModel):
     """A combo-heat-map hint event — shown when the badge renders, accepted
     when the server taps it, dismissed when the underlying combo fires without

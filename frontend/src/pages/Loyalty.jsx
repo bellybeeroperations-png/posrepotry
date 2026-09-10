@@ -209,6 +209,45 @@ export default function Loyalty() {
             ))}
           </div>
         </div>
+
+        {/* Engagement: feedback + social share */}
+        <div className="col-span-2 p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <div className="text-xs font-mono uppercase text-[var(--muted)] mb-3 flex items-center gap-1">
+            <Sparkles size={12} /> Engagement Rewards
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 rounded-lg border border-[var(--cyan)]/30 bg-[var(--cyan)]/5">
+              <div className="text-xs font-mono text-[var(--cyan)] uppercase mb-2">Post-visit feedback → HK$20 off</div>
+              <div className="flex gap-1 mb-2">
+                {[1,2,3,4,5].map((r) => (
+                  <button key={r} data-testid={`feedback-star-${r}`} onClick={async () => {
+                    try {
+                      const res = await api.post(`/loyalty/feedback/${selId}`, { rating: r, comment: "" });
+                      toast.success(`Thanks! Issued: ${res.data.voucher.title}`);
+                      load(selId);
+                    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+                  }} className="text-xl hover:scale-110 transition">★</button>
+                ))}
+              </div>
+              <div className="text-[10px] font-mono text-[var(--muted)]">1 reward per order</div>
+            </div>
+            <div className="p-3 rounded-lg border border-[var(--purple)]/30 bg-[var(--purple)]/5">
+              <div className="text-xs font-mono text-[var(--purple)] uppercase mb-2">Social share → +25 pts</div>
+              <div className="flex gap-1 flex-wrap">
+                {["instagram","tiktok","facebook","wechat","whatsapp"].map((p) => (
+                  <button key={p} data-testid={`share-${p}`} onClick={async () => {
+                    try {
+                      await api.post(`/loyalty/social-share/${selId}`, { platform: p });
+                      toast.success(`+25 pts for ${p}!`);
+                      load(selId);
+                    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+                  }} className="px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--purple)]/30 text-[10px] font-mono uppercase hover:bg-[var(--purple)]/20">{p}</button>
+                ))}
+              </div>
+              <div className="text-[10px] font-mono text-[var(--muted)] mt-2">1 reward / 24h / member</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

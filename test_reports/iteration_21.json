@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 27 loyalty testing. 6 pytest cases + full UI validation of engagement card. 4/6 backend tests PASS (signup, HH boost, streak, social share). 2 backend BUGS: (1) MemberIn model missing referred_by field so Pydantic drops it -> referral first-order bonus never triggers. (2) Feedback dedupe query filters on 'source: feedback' but insert never writes that key -> duplicate feedback for same order_id returns 200 instead of 400. Frontend engagement card (feedback stars, share buttons) works end-to-end: toasts show, wallet refreshes, points increment 100->125 after instagram share, HK$20 feedback voucher issued and visible in wallet.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/members (referred_by) + POST /api/orders/{id}/pay", "issue": "MemberIn Pydantic model has no `referred_by` (or `birth_month`) field. Extra fields are silently dropped by Pydantic, so `referred_by` is never persisted on the member document. Consequently on_payment_earn's referral block (which reads member_doc.get('referred_by')) never fires: no +200 pts, no referral vouchers for either party. Fix: add `referred_by: Optional[str] = None` (and `birth_month: Optional[int] = None`) to MemberIn in /app/backend/models.py, OR set the field explicitly in server.create_member.", "priority": "HIGH"},
+      {"endpoint": "POST /api/loyalty/feedback/{mid}", "issue": "Dedupe check queries db.feedback for {member_id, source:'feedback', order_id:...} but the insert `{**body.model_dump(), 'member_id':..., 'created_at':..., 'logged_by':...}` never writes a `source` key. Therefore the dupe query never matches and a second POST with the same order_id returns 200 + issues a second HK$20 voucher instead of the expected 400. Fix (choose one): remove 'source' from dupe_q, OR add `\"source\": \"feedback\"` to the insert payload in /app/backend/routers/loyalty.py::submit_feedback.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "routers/loyalty.py::on_payment_earn (streak parse)", "issue": "Line 311 uses ambiguous ternary `int(last_wk.split('-W')[0]), int(last_wk.split('-W')[1]) if last_wk else (None, None)` — ternary only binds to second element and would raise AttributeError if last_wk is None (masked by try/except). Recommend rewriting as `if last_wk: ly, lw = ...` for clarity."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter27_loyalty.py", "/app/test_reports/pytest/iter27.xml"],
+  "action_items": [
+    "Add `referred_by: Optional[str] = None` (and ideally `birth_month: Optional[int] = None`) to MemberIn in /app/backend/models.py so referral chains persist.",
+    "Fix feedback dedupe: either add `\"source\":\"feedback\"` to the feedback insert or drop `source` from dupe_q in /app/backend/routers/loyalty.py::submit_feedback."
+  ],
+  "critical_code_review_comments": [
+    "Referral flow silently broken because model layer drops the incoming field — a pattern to watch out for whenever a new payload key is added.",
+    "Feedback dedupe drift: the insert schema and the query schema disagree on 'source'. Consider a small helper that always writes `source` so this can't drift again.",
+    "MemberIn should also expose `birth_month` — on_payment_earn already reads it for the birthday voucher path (dead code today because it's never persisted from the API)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter27_loyalty.py"],
+  "success_rate": {"backend": "67% (4/6)", "frontend": "100%"},
+  "test_credentials": "admin polymuze111@gmail.com/admin123",
+  "seed_data_creation": "All test members created with TEST_ prefix and deleted (members + vouchers + orders + feedback + social_shares) after each test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Rerun /app/backend/tests/test_iter27_loyalty.py after fixing MemberIn.referred_by and feedback dedupe. Env vars must be exported before pytest: `export $(grep -v '^#' /app/frontend/.env | xargs) && export $(grep -v '^#' /app/backend/.env | xargs)`. pytest.ini forces `-n 2 --dist loadscope` — use `-n 0` for sequential.",
+  "rca of the issue": "1) Referral: Pydantic BaseModel defaults to `extra='ignore'`. server.create_member does `doc = body.model_dump()` which yields only whitelisted fields. Since MemberIn omits `referred_by`, the value posted by the client is thrown away before the insert. on_payment_earn then finds no referred_by on member_doc and skips the entire referral block. 2) Feedback: submit_feedback builds dupe_q with `source: 'feedback'` but persists the feedback with `{**body.model_dump(), 'member_id':..., 'created_at':..., 'logged_by':...}` — no `source` key ever written to db.feedback, so the query is guaranteed empty."
+}

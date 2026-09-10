@@ -274,12 +274,23 @@ async def list_members(q: Optional[str] = None, user: dict = Depends(get_current
 async def create_member(body: MemberIn, user: dict = Depends(get_current_user)):
     doc = body.model_dump()
     doc.update({
-        "lifetime_spend": 0.0, "visits": 0, "points": 0,
+        "lifetime_spend": 0.0, "visits": 0, "points": 100,   # 100-pt starter bonus
         "favorite_items": [], "avg_duration_min": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     r = await db.members.insert_one(doc)
     doc["_id"] = r.inserted_id
+    mid = str(r.inserted_id)
+    # Starter voucher — HK$50 off first order, 60d
+    try:
+        from routers.loyalty import _issue_voucher
+        await _issue_voucher(
+            member_id=mid, kind="signup",
+            title="Welcome! HK$50 off your first order",
+            discount_type="cash", discount_value=50.0, source="signup",
+        )
+    except Exception:
+        pass
     return serialize(doc)
 
 
