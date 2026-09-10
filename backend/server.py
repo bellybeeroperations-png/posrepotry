@@ -213,6 +213,13 @@ async def update_product(pid: str, body: ProductIn, user: dict = Depends(get_cur
     return serialize(await db.products.find_one({"_id": _oid(pid)}))
 
 
+@api.post("/products/{pid}/eightysix")
+async def toggle_eightysix(pid: str, on: bool = True, user: dict = Depends(get_current_user)):
+    """86 (out-of-stock) or un-86 a product. Instantly hides from public QR menu."""
+    await db.products.update_one({"_id": _oid(pid)}, {"$set": {"eightysix": bool(on)}})
+    return serialize(await db.products.find_one({"_id": _oid(pid)}))
+
+
 @api.delete("/products/{pid}")
 async def delete_product(pid: str, user: dict = Depends(get_current_user)):
     await db.products.delete_one({"_id": _oid(pid)})
@@ -629,6 +636,7 @@ async def kds(station: str = "all", user: dict = Depends(get_current_user)):
             tickets.append({
                 "order_id": str(o["_id"]),
                 "line_index": i,
+                "product_id": l.get("product_id"),
                 "name": l["name"],
                 "qty": l["qty"],
                 "notes": l.get("notes", ""),

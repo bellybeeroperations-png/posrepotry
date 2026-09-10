@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 8 re-test verifying Fix A (errMsg helper for 422s) and Fix B (KDS product_id). All 3 fixes CONFIRMED on disk and working end-to-end. Backend: 4/4 pytest passes. Frontend: readable toast rendered on 422, payment modal stays visible, register page remains functional. KDS returns product_id, 86 flow via product_id hides item from /api/public/menu/{table_id}.",
+  "on_disk_verification": {
+    "errors_js": "PRESENT at /app/frontend/src/lib/errors.js (390B)",
+    "register_import_line_12": "PRESENT",
+    "register_errMsg_uses": "lines 170 (saveOrder), 255 (pay) - PRESENT",
+    "menu_import_line_7": "PRESENT",
+    "menu_errMsg_uses": "lines 36, 43, 50, 57 - PRESENT",
+    "server_kds_product_id_line_639": "PRESENT ('product_id': l.get('product_id'))",
+    "kds_frontend_line_53": "PRESENT (const pid = t.product_id; POST /api/products/{pid}/eightysix)"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_evidence": {
+    "fix_A_422": "Mocked /orders/{id}/pay to return FastAPI 422 array-detail. Sonner toast displayed exact msg: \"Input should be 'cash', 'card', 'octopus', 'alipay', 'wechat', 'comp' or 'staff'\". Payment modal remained visible (see iter8_after422.png). Register page fully functional after error.",
+    "fix_A_happy_path": "String detail path in errMsg helper: `if (typeof d === 'string') return d;` — verified by code inspection; existing 400 flows unchanged.",
+    "fix_B_kds_product_id": "GET /api/kds returns each ticket with product_id field matching the underlying product. Verified for multiple tickets in live data.",
+    "fix_B_86_flow": "POST /api/products/{product_id}/eightysix?on=true using product_id from KDS ticket sets eightysix=true on the product; /api/public/menu/{table_id} excludes it; subsequent /api/kds calls still return 200."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_fixes.py",
+    "/app/test_reports/pytest/iter8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 929 lines - consider splitting into modules (auth, orders, kds, menu, public) for maintainability.",
+    "errMsg helper is solid; consider using it in the remaining pages (e.g., anywhere `toast.error('Failed')` swallows the detail like KDS bump/86, Menu del)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter8_fixes.py"],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (Fix A verified end-to-end)"},
+  "test_credentials": "polymuze111@gmail.com / admin123 (admin) — worked",
+  "seed_data_creation": "Created 2 TEST_iter8 pick_up orders during backend tests; 1 order in UI test. Non-destructive.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 7 report was incorrect — all iter 6.1 fixes ARE on disk and functional. Backend regression tests are in /app/backend/tests/test_iter8_fixes.py.",
+  "rca of the issue": "N/A - fixes were on disk and functional. Prior iter7 agent likely did not read files correctly."
+}

@@ -146,6 +146,22 @@ export function HappyHourEditor({ hh, categories, onClose, onSave }) {
       <Field label="Name">
         <input data-testid="edit-hh-name" value={name} onChange={(e) => setName(e.target.value)} className={inp} />
       </Field>
+      <Field label="Preset Tiers">
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            ["Opening", "15:00", "18:00", 10],
+            ["Evening", "18:00", "21:00", 20],
+            ["Late-night", "21:00", "03:00", 30],
+          ].map(([label, s, e, pct]) => (
+            <button key={label} data-testid={`hh-preset-${label}`}
+              onClick={() => { setStart(s); setEnd(e); setPercent(pct); if (!name) setName(`${label} Hour`); }}
+              className="p-2 rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-left hover:border-[var(--amber)]">
+              <div className="text-xs font-semibold">{label}</div>
+              <div className="text-[10px] font-mono text-[var(--muted)]">{s}–{e} · -{pct}%</div>
+            </button>
+          ))}
+        </div>
+      </Field>
       <div className="grid grid-cols-3 gap-4">
         <Field label="Start (24h)"><input data-testid="edit-hh-start" type="time" value={start} onChange={(e) => setStart(e.target.value)} className={inp} /></Field>
         <Field label="End (24h)"><input data-testid="edit-hh-end" type="time" value={end} onChange={(e) => setEnd(e.target.value)} className={inp} /></Field>

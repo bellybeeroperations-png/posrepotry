@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { Flame, Check, ChefHat, Wine } from "lucide-react";
+import { Flame, Check, ChefHat, Wine, Ban } from "lucide-react";
 
 const STATIONS = [
   ["all", "All", Flame],
@@ -45,6 +45,17 @@ export default function KDS() {
       setTickets(tickets.filter(x => !(x.order_id === t.order_id && x.line_index === t.line_index)));
       toast.success(`Bumped: ${t.name}`);
     } catch { toast.error("Bump failed"); }
+  };
+
+  const eightySix = async (t) => {
+    if (!confirm(`86 "${t.name}"? It will hide from register and QR menu.`)) return;
+    try {
+      const pid = t.product_id;
+      if (!pid) return toast.error("Cannot find product id");
+      await api.post(`/products/${pid}/eightysix`, null, { params: { on: true } });
+      toast.success(`86'd ${t.name} — hidden from menu`);
+      load();
+    } catch (e) { toast.error("Failed"); }
   };
 
   const stats = useMemo(() => {
@@ -121,6 +132,14 @@ export default function KDS() {
                   className="mt-auto btn-neon py-2 rounded-lg text-sm mt-3 flex items-center justify-center gap-2"
                 >
                   <Check size={16} /> Bump
+                </button>
+                <button
+                  data-testid={`kds-86-${t.order_id}-${t.line_index}`}
+                  onClick={() => eightySix(t)}
+                  className="mt-2 py-1.5 rounded-lg text-xs bg-[var(--surface)] border border-[var(--rose)]/50 text-[var(--rose)] hover:bg-[var(--rose)]/10 flex items-center justify-center gap-1"
+                  title="Mark this item out of stock"
+                >
+                  <Ban size={12} /> 86 this item
                 </button>
               </div>
             );

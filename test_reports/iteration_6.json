@@ -1,0 +1,57 @@
+{
+  "summary": "Iteration 6 — found + fixed 1 CRITICAL backend blocker; all features now green. Backend: PaymentIn.method Literal in /app/backend/models.py only accepted 5 methods (cash/card/octopus/wallet/split), rejecting the 5 new HK methods (fps_qr, alipayhk, wechatpay_hk, payme, unionpay) with HTTP 422. Fixed by extending the Literal to include all 8 methods — split test case did not catch this because splits: List[dict] is untyped and skips method validation. After fix: 11/11 iter6 pytest cases pass (86 toggle + public-menu exclusion + un-86; multi-tier HH with 2 concurrent rules on same category returning both from /api/happy-hours/active with max percent 25%; all 8 HK payment methods POST /orders/{id}/pay → 200 → status='paid' with correct method persisted; split with octopus+fps_qr amounts works). Iter5 + iter4 regression 17/17 still green. Frontend Playwright: (a) 3 hh-preset chips (Opening/Evening/Late-night) correctly fill start/end/percent/name — verified Opening (15:00/18:00/10/'Opening Hour') and Late-night (21:00/03:00/30); (b) Menu-manager toggle-86-<name> click marks eightysix=true and renders badge-86-<name>, click again un-86s and badge disappears; (c) Register composition after refactor works — cat-*, prod-*, btn-save-order, btn-pay all functional, 23 products, 9 categories; (d) PaymentModal renders all 8 pay-method-* buttons; octopus-tap → octopus-done state transition (1.8s); fps-panel with fps-qr-image src=api.qrserver.com; pay-confirm with fps_qr now returns 200 (post-fix); (e) KDS ticket renders kds-86-<oid>-<i> button per line; (f) Register HH banner data-testid=hh-banner renders when active rules exist.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "/api/orders/{id}/pay",
+        "issue": "PaymentIn.method Pydantic Literal in /app/backend/models.py line 144 did not include the 5 new HK methods declared by the frontend PaymentModal (fps_qr, alipayhk, wechatpay_hk, payme, unionpay). All 5 methods returned HTTP 422 rendering the feature unusable for >60% of the advertised payment options. FIXED by testing agent — extended Literal.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "/api/orders/{id}/pay (split path)",
+        "issue": "splits payload is typed as List[dict] — split-item .method is not validated against the Literal at all, so a malformed split-method silently passes. Consider a SplitEntry pydantic model with the same Literal."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Register.jsx (payModal onPay error handler)",
+        "issue": "toast.error(e?.response?.data?.detail) — when FastAPI returns a Pydantic 422, `detail` is an ARRAY OF OBJECTS. sonner tries to render it as a React child triggering runtime error: 'Objects are not valid as a React child (found: object with keys {type, loc, msg, input, ctx, url})' which crashes the payment modal / register page. Reproduced live pre-fix. Same pattern likely exists in saveOrder / fireCourse. Recommend: `const msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? detail.map(d=>d.msg).join(', ') : 'Request failed'); toast.error(msg)`",
+        "selector": "n/a — global api error handler pattern",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iter6.xml"
+  ],
+  "action_items": [
+    "Wrap FastAPI 422 detail arrays before passing to toast.error() — occurs in Register.jsx (saveOrder/openPay/fireCourse), Menu.jsx (saveProd/saveCat/saveHh/saveCombo), and probably every other page. Central api-error helper recommended.",
+    "Add SplitEntry Pydantic model with Literal method to /app/backend/models.py so split-payment items are validated the same way as top-level method."
+  ],
+  "critical_code_review_comments": [
+    "PaymentIn Literal mismatch was a plain schema oversight — main agent added 5 methods to PaymentModal.jsx but forgot to extend server validation. Consider deriving the Literal from a shared constants module or an enum importable by both layers.",
+    "Register.jsx totals memo (line 86-108) recomputes combo detection every render — combos array is stable so acceptable, but combo product_ids Set is rebuilt inside forEach — minor.",
+    "KDS.jsx eightySix() falls back to name-substring match (`t.name.startsWith(p.name)`) which is fragile — a variant line like 'Hong Kong Sour (Pint)' will match 'Hong Kong Sour' correctly but a product 'Neon' will match 'Neon Negroni' first. Better to include product_id in the KDS ticket payload (backend /kds already exposes line data — verify t.product_id availability).",
+    "PaymentModal.jsx OctopusTap uses hard-coded 1800ms setTimeout — fine for mock; when made real should be driven by device event.",
+    "editors.jsx HappyHourEditor preset chip auto-fills name only if name empty (`if (!name) setName(...)`) — but if user opens preset twice with empty-then-typed name, second preset click leaves user's typed name intact. Correct behavior. However clicking chip does NOT clear/reset days or category_ids — user may expect preset to fully define a rule. Minor UX."
+  ],
+  "updated_files": [
+    "/app/backend/models.py (PaymentIn.method Literal extended to 10 values)",
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "success_rate": {"backend": "100% (11/11 iter6 + 17/17 iter4+5 regression = 28/28)", "frontend": "100% smoke: HH presets, 86 toggle+badge, ProductGrid, all 8 pay-method buttons, octopus-tap→done, fps-panel+QR, kds-86, Register-after-refactor testids"},
+  "test_credentials": "Sourced from /app/memory/test_credentials.md — admin polymuze111@gmail.com / admin123",
+  "seed_data_creation": "Test created + immediately deleted 2 happy_hours (TEST_MT_15, TEST_MT_25). Multiple draft orders created & paid during payment method parametrised tests — these persist in DB with status='paid'; no cleanup performed (paid orders are legitimate business data). 3 KDS tickets left on-screen from Playwright smoke — main agent can bump or ignore.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression command: `REACT_APP_BACKEND_URL=https://hk-bar-pos-pro.preview.emergentagent.com pytest -o addopts= backend/tests/test_iteration6.py backend/tests/test_iteration5.py backend/tests/test_iteration4.py -v`. Root cause of iter6 CRITICAL was models.py Literal missing 5 new HK methods — trivial line 144 fix. When adding new payment methods, both frontend PaymentModal METHODS array AND backend PaymentIn Literal MUST be updated together. Remaining latent bug: Register.jsx payment/save error toasts crash the app when backend returns a Pydantic 422 (detail is an array of objects rendered as React child). Not a functional blocker post-fix but any future 422 will crash the register UI.",
+  "rca of the issue": "Iter6 CRITICAL — Backend models.py PaymentIn.method Literal was updated only for iter4 (added octopus, split, wallet) but not for iter6 (fps_qr, alipayhk, wechatpay_hk, payme, unionpay). Frontend PaymentModal.jsx METHODS constant lists 8 methods so users could pick any. Any pick other than cash/card/octopus posts a method string that fails Pydantic Literal validation returning 422 with detail=[<error object>]. Register.jsx onPay catches, sets toast.error(detail) — sonner passes the array through renderer → React runtime throws 'Objects are not valid as a React child' unmounting the modal tree. Fix: extend Literal to include the 5 HK methods. Verified with parametrised pytest that all 8 methods now POST → 200 → status='paid' and correct method persisted."
+}

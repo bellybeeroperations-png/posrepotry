@@ -16,6 +16,12 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - DB: MongoDB `hkbar_pos` — collections `users`, `areas`, `tables`, `categories`, `products`, `orders`, `members`, `happy_hours`
 - Theme: Hong Kong neon cyberpunk dark mode (`#0B0E14` bg, `#00F2FE` cyan, `#FFB800` amber, distinct table-state colors)
 
+## What's Implemented (v5 · Feb 2026 iteration)
+- **XSS hardening**: replaced `document.write` in Shift/Receipt/QR print with blob-URL `openPrintableWindow`
+- **Defensive var inits** in backend (`_compute_totals`, `pay_order`, `public_menu`)
+- **React hook deps stabilised** via `useCallback` in KDS/Waitlist/Floorplan
+- 17/17 backend regression + full frontend blob-URL flows verified
+
 ## What's Implemented (v4 · Feb 2026 iteration)
 - **Dark Menu QR**: public `/m/:tableId` mobile menu (no auth) with search, category chips, happy-hour banner, discounted pricing. QRCode modal from any Floorplan table with copy-link and printable QR card.
 - **Live Waitlist** (`/waitlist`): add form (name/phone/party/quote), stat KPIs (waiting/notified/covers/avg wait), per-row Text (mocked SMS with actual message string in toast), Seat, Cancel. Overdue rows turn rose; notified rows turn cyan.

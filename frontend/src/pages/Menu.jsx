@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Trash2, Clock, Edit3, Sparkles, Package } from "lucide-react";
+import { Plus, Trash2, Clock, Edit3, Sparkles, Package, Ban } from "lucide-react";
 import { ProductEditor, CategoryEditor, HappyHourEditor } from "@/components/pos/editors";
 import { ComboEditor } from "@/components/pos/ComboEditor";
+import { errMsg } from "@/lib/errors";
 
 const DAY_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
@@ -32,28 +33,28 @@ export default function Menu() {
       if (editingProd?.id) await api.patch(`/products/${editingProd.id}`, data);
       else await api.post("/products", data);
       toast.success("Product saved"); setEditingProd(null); load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+    } catch (e) { toast.error(errMsg(e, "Failed")); }
   };
   const saveCat = async (data) => {
     try {
       if (editingCat?.id) await api.patch(`/categories/${editingCat.id}`, data);
       else await api.post("/categories", data);
       toast.success("Category saved"); setEditingCat(null); load();
-    } catch (e) { toast.error("Failed"); }
+    } catch (e) { toast.error(errMsg(e, "Failed")); }
   };
   const saveHh = async (data) => {
     try {
       if (editingHh?.id) await api.patch(`/happy-hours/${editingHh.id}`, data);
       else await api.post("/happy-hours", data);
       toast.success("Happy hour saved"); setEditingHh(null); load();
-    } catch (e) { toast.error("Failed"); }
+    } catch (e) { toast.error(errMsg(e, "Failed")); }
   };
   const saveCombo = async (data) => {
     try {
       if (editingCombo?.id) await api.patch(`/combos/${editingCombo.id}`, data);
       else await api.post("/combos", data);
       toast.success("Combo saved"); setEditingCombo(null); load();
-    } catch (e) { toast.error("Failed"); }
+    } catch (e) { toast.error(errMsg(e, "Failed")); }
   };
   const del = async (path, name, cb) => {
     if (!confirm(`Delete ${name}?`)) return;
@@ -110,6 +111,19 @@ export default function Menu() {
                       </div>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button data-testid={`toggle-86-${p.name}`}
+                        onClick={async () => {
+                          try {
+                            await api.post(`/products/${p.id}/eightysix`, null, { params: { on: !p.eightysix } });
+                            toast.success(p.eightysix ? "Back in stock" : "86'd — hidden from menu");
+                            load();
+                          } catch { toast.error("Failed"); }
+                        }}
+                        className={p.eightysix ? "text-[var(--emerald)]" : "text-[var(--amber)]"}
+                        title={p.eightysix ? "Bring back" : "86 this item"}
+                      >
+                        <Ban size={14} />
+                      </button>
                       <button data-testid={`edit-prod-${p.name}`} onClick={() => setEditingProd(p)} className="text-[var(--cyan)]"><Edit3 size={14} /></button>
                       <button data-testid={`del-prod-${p.name}`} onClick={() => del(`/products/${p.id}`, p.name, load)} className="text-[var(--rose)]"><Trash2 size={14} /></button>
                     </div>
@@ -121,6 +135,11 @@ export default function Menu() {
                     <span>{p.modifiers?.length || 0}m</span>
                     {p.happy_hour_eligible && (
                       <span className="ml-auto flex items-center gap-1 text-[var(--amber)]"><Sparkles size={10} /> HH</span>
+                    )}
+                    {p.eightysix && (
+                      <span data-testid={`badge-86-${p.name}`} className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--rose)] text-white font-black">
+                        <Ban size={10} /> 86
+                      </span>
                     )}
                   </div>
                 </div>

@@ -141,7 +141,8 @@ class OrderUpdate(BaseModel):
 
 
 class PaymentIn(BaseModel):
-    method: Literal["cash", "card", "octopus", "wallet", "split"] = "cash"
+    method: Literal["cash", "card", "octopus", "wallet", "split",
+                    "fps_qr", "alipayhk", "wechatpay_hk", "payme", "unionpay"] = "cash"
     amount: float
     tip: float = 0.0
     splits: List[dict] = []  # [{method, amount}]

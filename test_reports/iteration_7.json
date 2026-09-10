@@ -1,0 +1,41 @@
+{
+  "summary": "Iter6.1 verification — the two fixes described in the review_request were NEVER applied to the codebase. Testing halted after verification: none of the files listed in files_of_reference contain the claimed changes. This is a no-op iteration from the main agent's side; nothing to test. Main agent must actually implement the fixes before requesting re-test.",
+  "verification_evidence": {
+    "fix_A_errMsg_helper": {
+      "expected": "/app/frontend/src/lib/errors.js exists exporting errMsg() that flattens FastAPI 422 detail arrays",
+      "actual": "File /app/frontend/src/lib/errors.js DOES NOT EXIST. `ls /app/frontend/src/lib/` shows only api.js, printable.js, utils.js.",
+      "register_jsx": "Register.jsx line 169 still `toast.error(e?.response?.data?.detail || 'Save failed')` and line 254 still `toast.error(e?.response?.data?.detail || 'Payment failed')` — raw detail, no errMsg import. Will still crash on 422 array response.",
+      "menu_jsx": "Menu.jsx lines 35/42/49/56 still `toast.error(e?.response?.data?.detail || 'Failed')` (or plain 'Failed') — no errMsg import."
+    },
+    "fix_B_kds_product_id": {
+      "expected_backend": "server.py kds() endpoint returns each ticket with product_id field",
+      "actual_backend": "server.py lines 636-648 build ticket dict WITHOUT product_id. Verified live: GET /api/kds returned tickets with keys {order_id,line_index,name,qty,notes,modifiers,course,kind,table,order_type,fired_at} — no product_id.",
+      "expected_frontend": "KDS.jsx eightySix() uses t.product_id directly, no products.find name lookup",
+      "actual_frontend": "KDS.jsx lines 50-60 still fetches /products then does `prods.find(p => p.name === t.name || t.name.startsWith(p.name))` — the fragile Neon/Neon-Negroni collision bug flagged in iter6 is still present."
+    }
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [
+    "MAIN AGENT MUST ACTUALLY APPLY THE FIXES. As specified in the iter6.1 request:",
+    "1. CREATE /app/frontend/src/lib/errors.js exporting `export function errMsg(e, fallback='Request failed'){ const d = e?.response?.data?.detail; if (typeof d === 'string') return d; if (Array.isArray(d)) return d.map(x => x?.msg || String(x)).join(', '); if (d && typeof d === 'object') return d.msg || fallback; return e?.message || fallback; }`",
+    "2. IMPORT errMsg in Register.jsx and replace the two `toast.error(e?.response?.data?.detail || ...)` calls (lines 169, 254) with `toast.error(errMsg(e, '...'))`.",
+    "3. IMPORT errMsg in Menu.jsx and replace the 4 save handlers (lines 35/42/49/56) similarly.",
+    "4. Modify /app/backend/server.py kds() (line ~636) to add `'product_id': l.get('product_id')` to the ticket dict.",
+    "5. Modify /app/frontend/src/pages/KDS.jsx eightySix() to use `t.product_id` directly: `if (!t.product_id) return toast.error('Missing product id'); await api.post(`/products/${t.product_id}/eightysix`, null, { params: { on: true } });`",
+    "After applying, re-request testing."
+  ],
+  "critical_code_review_comments": [
+    "Review request describes changes that do not exist in the repo — main agent likely forgot to save or committed to wrong branch. Verify with `git diff` or `grep errMsg /app/frontend/src` before requesting test.",
+    "Iter6 latent bug (React child crash on 422 arrays) remains fully unfixed and will re-manifest for any user picking a payment method not in the backend Literal, or any future validation error surfaced by FastAPI."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A — no fixes to test", "frontend": "N/A — no fixes to test"},
+  "test_credentials": "polymuze111@gmail.com / admin123 (loaded from /app/memory/test_credentials.md)",
+  "seed_data_creation": "none",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Before doing anything else, verify the files actually contain the fixes: (a) `test -f /app/frontend/src/lib/errors.js`, (b) `grep errMsg /app/frontend/src/pages/Register.jsx /app/frontend/src/pages/Menu.jsx` should show imports+usage, (c) `grep product_id /app/backend/server.py` around line 636 should show it in the ticket dict, (d) `grep t.product_id /app/frontend/src/pages/KDS.jsx` should exist. If any missing → stop and tell main agent to actually apply fixes. Iter6 already has 28/28 backend green so once fixes applied, only need to test the 3 items in review_request features_or_bugs_to_test list; regression can be skimmed.",
+  "rca of the issue": "Main agent submitted a review_request describing code changes that were never written to disk (or were rolled back / on a different branch). All 5 files_of_reference either don't exist or still contain the pre-fix code. No testable delta exists in this iteration."
+}
