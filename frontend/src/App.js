@@ -15,6 +15,7 @@ import KDS from "@/pages/KDS";
 import Shift from "@/pages/Shift";
 import MobileMenu from "@/pages/MobileMenu";
 import Waitlist from "@/pages/Waitlist";
+import Kegs from "@/pages/Kegs";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/kds" element={<Protected><KDS /></Protected>} />
           <Route path="/shift" element={<Protected><Shift /></Protected>} />
           <Route path="/waitlist" element={<Protected><Waitlist /></Protected>} />
+          <Route path="/kegs" element={<Protected><Kegs /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

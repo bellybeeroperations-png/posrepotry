@@ -10,6 +10,42 @@ async def seed_all(db):
     await _seed_menu(db)
     await _seed_members(db)
     await _seed_happy_hours(db)
+    await _seed_kegs(db)
+
+
+async def _seed_kegs(db):
+    if await db.kegs.count_documents({}) > 0:
+        return
+    from datetime import datetime, timezone
+    # link kegs to beer products by name
+    beer_names = ["Tsingtao", "Craft IPA", "San Miguel"]
+    prods = {p["name"]: p async for p in db.products.find({"name": {"$in": beer_names}})}
+    kegs = []
+    tap = 1
+    for beer_name, size, pour in [
+        ("Tsingtao", 30000, 568),
+        ("Craft IPA", 30000, 568),
+        ("San Miguel", 30000, 500),
+    ]:
+        p = prods.get(beer_name)
+        if not p:
+            continue
+        # Two kegs per beer (main + backup) to demonstrate 35+ taps at scale
+        for backup in [False, True]:
+            kegs.append({
+                "name": f"Tap {tap:02d} · {beer_name}{' (backup)' if backup else ''}",
+                "product_id": str(p["_id"]),
+                "size_ml": size,
+                "current_ml": int(size * (0.08 if (tap == 1) else 1.0)),  # tap 1 low for demo
+                "ml_per_pour": pour,
+                "threshold_pct": 10.0,
+                "status": "on",
+                "opened_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            tap += 1
+    if kegs:
+        await db.kegs.insert_many(kegs)
 
 
 async def _seed_users(db):

@@ -1,0 +1,36 @@
+{
+  "summary": "Iter10 testing complete. Backend: 8/8 iter10 tests pass (kegs list/CRUD/new/blown/delete, auto-decrement on pay, keg-blown-on-zero, prep-view aggregation, reports shape, full order lifecycle, split pay via cash+fps_qr). Regression: 8/8 iter8+iter9 tests pass. Frontend: /kegs shows 6 seeded taps; Tap 01 · Tsingtao pct=8% with alert; kegs-alerts KPI = 1; keg-new resets to 100%; nav-kegs present. /kds board+prep tabs both work; Prep View shows aggregated ×N cards with table pill chips (DINE_IN ×2). Server split pattern (routers/kegs.py + deps.py) wired correctly, endpoints reachable, best-effort decrement wrapped in try/except in pay_order.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/kegs + decrement_kegs_for_order", "issue": "When two kegs share the same product_id (e.g. main + backup), by_pid dict overwrites the main with the backup, so pours always decrement the LAST-listed keg for that product — not the near-empty one. Result: alert-demo Tap 01 never drains via real orders while its backup Tap 02 is drained first. Consider selecting keg with lowest current_ml (or on-tap oldest opened_at) instead."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_kegs.py",
+    "/app/test_reports/pytest/iter10_results.xml"
+  ],
+  "action_items": [
+    "(minor) Prefer draining the lowest-current_ml keg first in decrement_kegs_for_order so 'blown' triggers on the actually-near-empty tap rather than the newest backup."
+  ],
+  "critical_code_review_comments": [
+    "deps.py uses os.environ[...] (fail-fast) — good.",
+    "routers/kegs.py: decrement_kegs_for_order picks arbitrary keg per product_id via dict overwrite; deterministic-but-unintuitive. Sort kegs by opened_at asc or current_ml asc before building by_pid.",
+    "pay_order wraps decrement in try/except with silent pass — meets 'never block payment' requirement; consider logging the exception for observability.",
+    "PATCH /api/kegs accepts full KegIn (including size_ml/product_id) but does NOT re-sync current_ml to new size_ml if size changes — could produce pct>100. Minor.",
+    "Router prefix '/api' is duplicated across kegs router and server api_router — consistent, but any future extraction should use the same convention."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter10_kegs.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "polymuze111@gmail.com / admin123 (PIN 9999); Manager PIN 1111",
+  "seed_data_creation": "Kegs auto-seed 6 taps across Tsingtao/Craft IPA/San Miguel; Tap 01 pre-set to 8% for alert demo. Test fixtures create TEST_-prefixed kegs/orders and clean them up.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Kegs router split pattern (routers/kegs.py + deps.py) is proven — server still exposes core routes directly. Prep-view aggregation is under /api/kds/prep (moved into kegs router — a bit misplaced by name, but functional). Only non-fatal concern is the by_pid ambiguity in decrement_kegs_for_order noted above.",
+  "rca of the issue": "N/A — no blocking bugs."
+}

@@ -61,6 +61,12 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v7 · Feb 2026 iteration)
+- **Server.py split (pattern demo)**: extracted `/app/backend/routers/kegs.py` as its own APIRouter with shared helpers in `/app/backend/deps.py`.
+- **Keg Watch**: `/api/kegs` CRUD + auto-decrement on payment; drains the lowest-volume keg per product first so alerts and 'blown' fire on the near-empty tap not the backup. Seed 6 kegs with Tap 01 at 8% for alert demo. `/kegs` page with KPIs and per-tap progress bars.
+- **Consolidated Prep View**: `GET /api/kds/prep` groups fired items by product; KDS gets a Prep View tab with giant `×N` counts and per-table pill chips.
+- Testing agent 100% pass — iter10 (8/8) + iter8+9 regression (8/8).
+
 ## Prioritized Backlog (from user's expanded HK Bar spec)
 
 ### P0 · Fast Bar Ops (next up)

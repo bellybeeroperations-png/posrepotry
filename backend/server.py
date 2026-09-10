@@ -27,6 +27,7 @@ from models import (
     WaitlistIn, ComboIn, PinVerifyIn,
 )
 from seed import seed_all
+from routers.kegs import router as kegs_router, decrement_kegs_for_order
 
 # ----- DB -----
 mongo_url = os.environ["MONGO_URL"]
@@ -476,6 +477,11 @@ async def pay_order(oid: str, body: PaymentIn, user: dict = Depends(get_current_
             {"_id": _oid(o["table_id"])},
             {"$set": {"status": "dirty", "current_order_id": None}},
         )
+    # decrement kegs for any linked draught lines
+    try:
+        await decrement_kegs_for_order(o)
+    except Exception:
+        pass  # keg tracking best-effort; never block payment
     if o.get("member_id"):
         opened = o.get("opened_at")
         dur_min = 0
@@ -901,6 +907,7 @@ async def pin_verify(body: PinVerifyIn):
 
 # ===================== BOOTSTRAP =====================
 app.include_router(api)
+app.include_router(kegs_router)  # split module — kegs + prep-view
 
 app.add_middleware(
     CORSMiddleware,
