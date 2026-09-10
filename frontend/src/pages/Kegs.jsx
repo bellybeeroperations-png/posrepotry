@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { Beer, RefreshCw, Ban, AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { Beer, RefreshCw, Ban, AlertTriangle, Plus, Trash2, TrendingUp } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function Kegs() {
   const [kegs, setKegs] = useState([]);
   const [products, setProducts] = useState([]);
+  const [selKeg, setSelKeg] = useState(null);
 
   const load = useCallback(async () => {
     const [k, p] = await Promise.all([api.get("/kegs"), api.get("/products")]);
@@ -112,6 +114,10 @@ export default function Kegs() {
                   <Trash2 size={10} /> Del
                 </button>
               </div>
+              <button data-testid={`keg-chart-${k.name}`} onClick={() => setSelKeg(k)}
+                className="mt-2 w-full py-1.5 rounded bg-[var(--cyan)]/10 border border-[var(--cyan)]/40 text-[10px] font-mono uppercase text-[var(--cyan)] flex items-center justify-center gap-1">
+                <TrendingUp size={10} /> 7-day velocity
+              </button>
             </div>
           );
         })}
@@ -119,6 +125,60 @@ export default function Kegs() {
           <div className="col-span-3 p-10 rounded-xl border border-dashed border-[var(--border)] text-center text-[var(--muted)]">
             No kegs yet — add your first tap.
           </div>
+        )}
+      </div>
+
+      {selKeg && <KegAnalyticsModal keg={selKeg} onClose={() => setSelKeg(null)} />}
+    </div>
+  );
+}
+
+function KegAnalyticsModal({ keg, onClose }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get(`/kegs/${keg.id}/pours`, { params: { days: 7 } }).then(r => setData(r.data));
+  }, [keg.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl w-full max-w-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp size={18} className="text-[var(--cyan)]" />
+          <div className="font-display font-black text-xl">{keg.name}</div>
+          <button onClick={onClose} className="ml-auto text-[var(--muted)] hover:text-white">×</button>
+        </div>
+        <div className="text-xs font-mono uppercase text-[var(--muted)] mb-4">7-day pour velocity</div>
+        {data && (
+          <>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="p-2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+                <div className="text-[10px] font-mono uppercase text-[var(--muted)]">Total (7d)</div>
+                <div className="font-display font-black text-xl text-[var(--cyan)]" data-testid="keg-total-ml">{data.total_pints} pints</div>
+              </div>
+              <div className="p-2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+                <div className="text-[10px] font-mono uppercase text-[var(--muted)]">Daily avg</div>
+                <div className="font-display font-black text-xl">{(data.total_pints / 7).toFixed(1)}</div>
+              </div>
+              <div className="p-2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+                <div className="text-[10px] font-mono uppercase text-[var(--muted)]">Peak day</div>
+                <div className="font-display font-black text-xl">
+                  {Math.max(0, ...data.days.map(d => d.pints))} pints
+                </div>
+              </div>
+            </div>
+            <div data-testid="keg-chart">
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={data.days}>
+                  <XAxis dataKey="day" stroke="#94A3B8" fontSize={10}
+                    tickFormatter={(d) => d.slice(5)} />
+                  <YAxis stroke="#94A3B8" fontSize={10} />
+                  <Tooltip contentStyle={{ background: "#121824", border: "1px solid #26334D" }}
+                    formatter={(v) => [`${(v/568).toFixed(1)} pints`, "Pours"]} />
+                  <Line type="monotone" dataKey="ml" stroke="#00F2FE" strokeWidth={2} dot={{ fill: "#00F2FE", r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </>
         )}
       </div>
     </div>

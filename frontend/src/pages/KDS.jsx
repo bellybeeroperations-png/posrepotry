@@ -117,10 +117,22 @@ export default function KDS() {
                 className="p-4 rounded-xl border border-[var(--amber)]/40 bg-[var(--amber)]/5">
                 <div className="flex items-baseline gap-3">
                   <div className="font-display font-black text-4xl text-[var(--amber)] tabular-nums">×{item.total}</div>
-                  <div>
+                  <div className="flex-1">
                     <div className="font-display font-bold text-xl leading-tight">{item.name}</div>
                     <div className="text-[10px] font-mono uppercase text-[var(--muted)]">{item.course} · {item.kind}</div>
                   </div>
+                  <button data-testid={`prep-bump-all-${item.name}`}
+                    onClick={async () => {
+                      try {
+                        const r = await api.post("/kds/prep/bump", null, { params: { product_id: item.product_id } });
+                        toast.success(`Bumped ${r.data.bumped} tickets`);
+                        load();
+                      } catch { toast.error("Failed"); }
+                    }}
+                    disabled={!item.product_id}
+                    className="btn-neon px-3 py-2 rounded-lg text-xs font-mono uppercase flex items-center gap-1 disabled:opacity-40">
+                    <Check size={12} /> Bump All
+                  </button>
                 </div>
                 <div className="mt-3 pt-3 border-t border-[var(--border)]">
                   <div className="text-[10px] font-mono uppercase text-[var(--muted)] mb-1">

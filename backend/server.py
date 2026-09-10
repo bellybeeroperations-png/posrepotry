@@ -28,6 +28,7 @@ from models import (
 )
 from seed import seed_all
 from routers.kegs import router as kegs_router, decrement_kegs_for_order
+from routers.tables import router as tables_router
 
 # ----- DB -----
 mongo_url = os.environ["MONGO_URL"]
@@ -112,57 +113,7 @@ async def create_area(body: AreaIn, user: dict = Depends(get_current_user)):
     return serialize(doc)
 
 
-@api.get("/tables")
-async def list_tables(area_id: Optional[str] = None, user: dict = Depends(get_current_user)):
-    q = {"area_id": area_id} if area_id else {}
-    tables = sl(await db.tables.find(q).to_list(500))
-    # attach current order + reservation summary
-    for t in tables:
-        if t.get("current_order_id"):
-            o = await db.orders.find_one({"_id": _oid(t["current_order_id"])})
-            if o:
-                t["current_order"] = {
-                    "id": str(o["_id"]),
-                    "total": o.get("total", 0),
-                    "guests": o.get("guests", 1),
-                    "opened_at": o.get("opened_at"),
-                }
-        if t.get("reservation_id"):
-            r = await db.reservations.find_one({"_id": _oid(t["reservation_id"])})
-            if r:
-                t["reservation"] = {
-                    "id": str(r["_id"]),
-                    "guest_name": r["guest_name"],
-                    "phone": r["phone"],
-                    "party_size": r["party_size"],
-                    "reserved_for": r["reserved_for"],
-                }
-    return tables
-
-
-@api.post("/tables")
-async def create_table(body: TableIn, user: dict = Depends(get_current_user)):
-    doc = body.model_dump()
-    doc["status"] = "available"
-    doc["current_order_id"] = None
-    doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    r = await db.tables.insert_one(doc)
-    doc["_id"] = r.inserted_id
-    return serialize(doc)
-
-
-@api.patch("/tables/{table_id}")
-async def update_table(table_id: str, body: TablePosIn, user: dict = Depends(get_current_user)):
-    update = {k: v for k, v in body.model_dump().items() if v is not None}
-    await db.tables.update_one({"_id": _oid(table_id)}, {"$set": update})
-    t = await db.tables.find_one({"_id": _oid(table_id)})
-    return serialize(t)
-
-
-@api.delete("/tables/{table_id}")
-async def delete_table(table_id: str, user: dict = Depends(get_current_user)):
-    await db.tables.delete_one({"_id": _oid(table_id)})
-    return {"ok": True}
+# NOTE: /api/tables* endpoints now live in routers/tables.py (extracted from this file).
 
 
 # ===================== MENU: CATEGORIES + PRODUCTS =====================
@@ -527,17 +478,7 @@ async def void_order(oid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-# ===================== TABLE ACTIONS =====================
-@api.post("/tables/{tid}/clear")
-async def clear_table(tid: str, user: dict = Depends(get_current_user)):
-    await db.tables.update_one({"_id": _oid(tid)}, {"$set": {"status": "available", "current_order_id": None}})
-    return {"ok": True}
-
-
-@api.post("/tables/{tid}/status")
-async def set_status(tid: str, status: str, user: dict = Depends(get_current_user)):
-    await db.tables.update_one({"_id": _oid(tid)}, {"$set": {"status": status}})
-    return {"ok": True}
+# NOTE: /api/tables/{id}/clear and /api/tables/{id}/status also moved to routers/tables.py.
 
 
 # ===================== STAFF =====================
@@ -907,7 +848,8 @@ async def pin_verify(body: PinVerifyIn):
 
 # ===================== BOOTSTRAP =====================
 app.include_router(api)
-app.include_router(kegs_router)  # split module — kegs + prep-view
+app.include_router(kegs_router)      # split: kegs + prep-view + analytics
+app.include_router(tables_router)    # split: tables endpoints
 
 app.add_middleware(
     CORSMiddleware,

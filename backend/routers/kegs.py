@@ -90,25 +90,76 @@ async def delete_keg(kid: str, user: dict = Depends(get_current_user)):
 async def decrement_kegs_for_order(order: dict):
     """Called by orders_pay — subtract ml per pour for every line matching an on-tap keg.
     When multiple on-tap kegs share the same product_id (main + backup), drain the
-    lowest-current_ml keg first so the near-empty tap blows before the backup."""
+    lowest-current_ml keg first so the near-empty tap blows before the backup.
+    Every pour is logged to keg_pours for the 7-day velocity analytics."""
     kegs = await db.kegs.find({"status": "on"}).to_list(200)
-    # sort ascending by current_ml so the smallest keg per product wins the by_pid slot
     kegs.sort(key=lambda k: (k.get("current_ml") or 0))
     by_pid = {}
     for k in kegs:
         by_pid.setdefault(k["product_id"], k)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    pour_docs = []
     for l in order.get("lines", []):
         pid = l.get("product_id")
         if pid not in by_pid:
             continue
         k = by_pid[pid]
-        pour = (k.get("ml_per_pour") or 568) * (l.get("qty") or 1)
+        qty = l.get("qty") or 1
+        pour = (k.get("ml_per_pour") or 568) * qty
         new_ml = max(0, (k.get("current_ml") or 0) - pour)
         upd = {"current_ml": new_ml}
         if new_ml == 0:
             upd["status"] = "blown"
         await db.kegs.update_one({"_id": k["_id"]}, {"$set": upd})
         k["current_ml"] = new_ml
+        pour_docs.append({
+            "keg_id": str(k["_id"]),
+            "product_id": pid,
+            "ml": pour,
+            "qty": qty,
+            "at": now_iso,
+        })
+    if pour_docs:
+        await db.keg_pours.insert_many(pour_docs)
+
+
+@router.get("/kegs/{kid}/pours")
+async def keg_pours(kid: str, days: int = 7, user: dict = Depends(get_current_user)):
+    """Return per-day pour volume for the last N days (default 7)."""
+    from datetime import timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    docs = await db.keg_pours.find({"keg_id": kid, "at": {"$gte": since}}).to_list(5000)
+    by_day: dict = {}
+    for d in docs:
+        day = d["at"][:10]  # YYYY-MM-DD
+        by_day[day] = by_day.get(day, 0) + (d.get("ml") or 0)
+    # Fill missing days with 0 so the chart line stays continuous
+    out = []
+    for i in range(days - 1, -1, -1):
+        day = (datetime.now(timezone.utc) - timedelta(days=i)).date().isoformat()
+        out.append({"day": day, "ml": by_day.get(day, 0), "pints": round(by_day.get(day, 0) / 568, 1)})
+    total_ml = sum(d["ml"] for d in out)
+    return {"days": out, "total_ml": total_ml, "total_pints": round(total_ml / 568, 1)}
+
+
+@router.post("/kds/prep/bump")
+async def prep_bump_all(product_id: str, user: dict = Depends(get_current_user)):
+    """Bump every fired-not-bumped line matching product_id across all open orders."""
+    orders = await db.orders.find({"status": "open"}).to_list(500)
+    bumped = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for o in orders:
+        lines = o.get("lines", [])
+        changed = False
+        for l in lines:
+            if l.get("product_id") == product_id and l.get("fired_at") and not l.get("bumped_at") and not l.get("held"):
+                l["bumped_at"] = now_iso
+                l["bumped_by"] = user["id"]
+                bumped += 1
+                changed = True
+        if changed:
+            await db.orders.update_one({"_id": o["_id"]}, {"$set": {"lines": lines}})
+    return {"bumped": bumped}
 
 
 # ---------- Prep view (consolidated kitchen batch) ----------

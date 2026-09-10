@@ -1,0 +1,31 @@
+{
+  "summary": "Executed /app/backend/tests/test_iter11_split.py (10 tests) and validated frontend Kegs analytics modal + KDS Prep Bump-All. All backend tests pass (10/10) after fixing 3 test-authoring bugs (shape 'square'→'rect', 'capacity'→'seats', held False→True so fire actually fires the lines). Frontend both flows verified end-to-end: Keg analytics modal opens with keg-total-ml, keg-chart div, Recharts SVG rendered; KDS Prep tab shows fired items, Bump All emits 'Bumped 2 tickets' toast and row disappears.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_split.py",
+    "/app/test_reports/pytest/iter11_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 881 lines — should be modularised further (already partially extracted into routers/tables.py, routers/kegs.py).",
+    "PATCH /api/tables/{id} uses TablePosIn (partial) — response includes all persisted fields; test authors must use `seats` not `capacity` (schema field naming is consistent, no bug)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter11_split.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "polymuze111@gmail.com / admin123 (PIN 9999) — Admin",
+  "seed_data_creation": "Test created transient orders with note prefix TEST_iter11_pour / TEST_bumpall_A/B and UI_TEST_prep; all consumed by bump/pay flows.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter11 fully green. Backend tests require REACT_APP_BACKEND_URL to be exported in shell before pytest invocation (pytest doesn't auto-load frontend/.env). Fix in test_iter11_split.py: line held=True is required for the fire endpoint to promote lines to prep view (fire only mutates lines where held=True).",
+  "rca of the issue": "Three test-authoring bugs found and fixed in test_iter11_split.py: (1) TableIn schema Literal accepts only 'rect'|'circle', test sent 'square' → 422. (2) TableIn field is `seats`, test sent `capacity` → key missing on response. (3) fire endpoint only mutates lines where held=True; test created lines with held=False, so no lines got fired_at set, so prep view total stayed at 0/residual → assertion `total>=2` failed. Fixed by inverting held default to True on the two order lines."
+}
