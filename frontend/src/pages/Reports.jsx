@@ -8,7 +8,11 @@ const PLATFORM_TINT = { foodpanda: "#F43F5E", deliveroo: "#10B981", keeta: "#FFB
 
 export default function Reports() {
   const [data, setData] = useState(null);
-  useEffect(() => { api.get("/reports/summary").then((r) => setData(r.data)); }, []);
+  const [digest, setDigest] = useState(null);
+  useEffect(() => {
+    api.get("/reports/summary").then((r) => setData(r.data));
+    api.get("/loyalty/digest").then((r) => setDigest(r.data)).catch(() => {});
+  }, []);
   if (!data) return <div className="text-[var(--muted)]">Loading…</div>;
 
   return (
@@ -40,6 +44,28 @@ export default function Reports() {
                   <div><div className="text-[var(--muted)]">Fee</div><div className="text-[var(--rose)] font-bold">-{fmtHKD(p.fee)}</div></div>
                   <div><div className="text-[var(--muted)]">Net</div><div className="text-[var(--emerald)] font-bold">{fmtHKD(p.net)}</div></div>
                 </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      {digest && (
+        <Card title="Loyalty Digest — Today" data-testid="card-loyalty-digest">
+          <div className="grid grid-cols-5 gap-3 mb-3">
+            <MiniKpi label="Sign-ups"        value={digest.signups_today}         testid="digest-signups" />
+            <MiniKpi label="Vouchers issued" value={digest.vouchers_issued_today} testid="digest-vouchers-issued" />
+            <MiniKpi label="Vouchers redeem" value={digest.vouchers_redeemed_today} testid="digest-vouchers-redeemed" />
+            <MiniKpi label="Scratch claimed" value={digest.scratch_claimed_today} testid="digest-scratch" />
+            <MiniKpi label="Push sent"       value={digest.push_sent_today}       testid="digest-push" />
+          </div>
+          <div className="text-[10px] font-mono uppercase text-[var(--muted)] mb-1">Top point earners</div>
+          <div className="space-y-1">
+            {digest.top_point_earners.map((m, i) => (
+              <div key={m.id} data-testid={`digest-earner-${i}`} className="flex items-center gap-3 text-xs">
+                <span className="w-5 text-right font-mono text-[var(--muted)]">{i + 1}</span>
+                <span className="flex-1">{m.name}</span>
+                <span className="text-[10px] font-mono text-[var(--purple)]">{m.tier}</span>
+                <span className="font-mono font-bold text-[var(--amber)] w-16 text-right">{m.points} pts</span>
               </div>
             ))}
           </div>
@@ -115,6 +141,12 @@ const Kpi = ({ label, value, icon: Icon, color, testid, sub }) => (
     </div>
     <div className="font-display font-black text-2xl mt-1">{value}</div>
     {sub && <div className="text-[9px] font-mono uppercase text-[var(--muted)] mt-0.5">{sub}</div>}
+  </div>
+);
+const MiniKpi = ({ label, value, testid }) => (
+  <div data-testid={testid} className="p-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)]">
+    <div className="text-[9px] font-mono uppercase text-[var(--muted)]">{label}</div>
+    <div className="font-display font-black text-lg">{value}</div>
   </div>
 );
 const Card = ({ title, children, ...rest }) => (

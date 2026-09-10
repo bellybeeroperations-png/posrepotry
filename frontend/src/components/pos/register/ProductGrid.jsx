@@ -78,6 +78,12 @@ export default function ProductGrid({ products, categories, activeCat, setActive
                   Happy Hr
                 </div>
               )}
+              {p.min_tier && (
+                <div data-testid={`ribbon-${p.name}`}
+                  className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full bg-[var(--purple)]/25 border border-[var(--purple)] text-[9px] font-mono uppercase font-black text-[var(--purple)] flex items-center gap-0.5">
+                  ★ {p.min_tier}
+                </div>
+              )}
             </button>
           );
         })}

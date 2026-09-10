@@ -429,7 +429,22 @@ async def push_send(body: PushSegmentIn, user: dict = Depends(get_current_user))
     if user["role"] not in ("admin", "manager"):
         raise HTTPException(403, "Manager only")
     members = await _match_segment(body)
+    # Optional Twilio wire-up — best-effort; MOCKED if creds missing
+    import os as _os
+    twilio_client = None
+    tw_from_sms = _os.environ.get("TWILIO_SMS_FROM")
+    tw_from_wa = _os.environ.get("TWILIO_WHATSAPP_FROM")  # e.g. whatsapp:+14155238886
+    try:
+        sid = _os.environ.get("TWILIO_ACCOUNT_SID")
+        tok = _os.environ.get("TWILIO_AUTH_TOKEN")
+        if sid and tok:
+            from twilio.rest import Client
+            twilio_client = Client(sid, tok)
+    except Exception:
+        twilio_client = None
+
     issued = 0
+    delivered = 0
     for m in members:
         v = await _issue_voucher(
             member_id=str(m["_id"]), kind="push",
@@ -437,14 +452,62 @@ async def push_send(body: PushSegmentIn, user: dict = Depends(get_current_user))
             discount_type=body.discount_type, discount_value=body.discount_value,
             source="push_composer", ttl_days=body.ttl_days,
         )
-        # Log mocked send — real SMS/WhatsApp integration lands later
+        # Compose message
+        amount_str = f"{body.discount_value}% off" if body.discount_type == "percent" else f"HK${body.discount_value:.0f} off"
+        msg_body = f"{body.title} · use code {v['code']} · expires in {body.ttl_days}d · {amount_str}"
+        phone = m.get("phone") or ""
+        # Normalise to +852 if bare 8-digit
+        if phone and not phone.startswith("+"):
+            phone = f"+852{phone.replace(' ', '')}"
+
+        send_status = "MOCKED"
+        send_error = None
+        if twilio_client and phone:
+            try:
+                if body.channel == "sms" and tw_from_sms:
+                    twilio_client.messages.create(from_=tw_from_sms, to=phone, body=msg_body)
+                    send_status = "SENT"
+                elif body.channel == "whatsapp" and tw_from_wa:
+                    twilio_client.messages.create(from_=tw_from_wa, to=f"whatsapp:{phone}", body=msg_body)
+                    send_status = "SENT"
+                # email left to a future Resend/SendGrid integration
+            except Exception as e:
+                send_status = "FAILED"
+                send_error = str(e)[:200]
+        if send_status == "SENT":
+            delivered += 1
+
         await db.push_log.insert_one({
             "member_id": str(m["_id"]), "member_name": m.get("name"),
-            "phone": m.get("phone"), "channel": body.channel,
+            "phone": phone, "channel": body.channel,
             "voucher_id": v["id"], "voucher_code": v["code"],
-            "title": body.title, "sent_by": user["id"],
+            "title": body.title, "body": msg_body,
+            "sent_by": user["id"],
             "sent_at": datetime.now(timezone.utc).isoformat(),
-            "status": "MOCKED",
+            "status": send_status, "error": send_error,
         })
         issued += 1
-    return {"issued": issued, "channel": body.channel, "note": "MOCKED — real SMS/WhatsApp send not wired"}
+    return {
+        "issued": issued, "delivered": delivered, "channel": body.channel,
+        "note": ("Real Twilio send" if twilio_client else "MOCKED — set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_SMS_FROM / TWILIO_WHATSAPP_FROM to enable")
+    }
+
+
+@router.get("/digest")
+async def loyalty_digest(user: dict = Depends(get_current_user)):
+    """Today's loyalty ROI snapshot for the Reports dashboard."""
+    day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    signups = await db.members.count_documents({"created_at": {"$gte": day_start}})
+    vouchers_issued = await db.vouchers.count_documents({"created_at": {"$gte": day_start}})
+    vouchers_redeemed = await db.vouchers.count_documents({"redeemed_at": {"$gte": day_start}})
+    scratch_claimed = await db.scratch_tickets.count_documents({"claimed_at": {"$gte": day_start}})
+    push_sent = await db.push_log.count_documents({"sent_at": {"$gte": day_start}})
+    top_members = await db.members.find().sort("points", -1).limit(5).to_list(5)
+    return {
+        "signups_today": signups,
+        "vouchers_issued_today": vouchers_issued,
+        "vouchers_redeemed_today": vouchers_redeemed,
+        "scratch_claimed_today": scratch_claimed,
+        "push_sent_today": push_sent,
+        "top_point_earners": [{"id": str(m["_id"]), "name": m.get("name"), "points": m.get("points", 0), "tier": tier_for(m.get("lifetime_spend", 0))["name"]} for m in top_members],
+    }

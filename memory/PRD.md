@@ -61,6 +61,12 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v22 · Feb 2026 — Iter 30 · Push Delivery + Digest + Secret Badge)
+- **Twilio wire-up** for Push Composer — `push/send` now sends real Twilio SMS/WhatsApp when `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_SMS_FROM` / `TWILIO_WHATSAPP_FROM` env vars are set; falls back to MOCKED with a helpful setup hint. Bare 8-digit HK phones auto-prefixed to `+852`. `push_log` records `SENT|FAILED|MOCKED`.
+- **Loyalty Digest** — `GET /api/loyalty/digest` returns today's `signups`, `vouchers_issued`, `vouchers_redeemed`, `scratch_claimed`, `push_sent`, plus top-5 members by points. New "Loyalty Digest — Today" card on `/reports` with 5 MiniKPIs and a ranked earners list.
+- **Secret Menu Badge** — Products with `min_tier` now show a purple `★ Bronze/Silver/Gold/Platinum` ribbon top-right on Register tiles so staff know it's gated, even when they can see it themselves.
+- **Verified via curl**: digest returns live counts; push_send returns `delivered:0 · MOCKED — set TWILIO_ACCOUNT_SID / ...` hint when creds absent.
+
 ## What's Implemented (v21 · Feb 2026 — Iter 29 · P2 Loyalty + Stripe UX)
 - **Loyalty Push Composer** — `POST /api/loyalty/push/preview` + `POST /api/loyalty/push/send` (manager-only). Segment by tier + inactivity days + min spend; issues time-boxed vouchers to every match and logs to `push_log` (channel MOCKED: `whatsapp | sms | email`). New "Push Composer" card on /loyalty page with preview → confirm blast flow.
 - **Secret Menu Unlock** — `ProductIn.min_tier` field (Bronze/Silver/Gold/Platinum). `ProductGrid` filters out products whose `min_tier` exceeds the attached member's tier. Staff (admin/manager) always see everything.
