@@ -30,6 +30,7 @@ from seed import seed_all
 from routers.kegs import router as kegs_router
 from routers.tables import router as tables_router
 from routers.orders import router as orders_router
+from routers.loyalty import router as loyalty_router
 
 # ----- DB -----
 mongo_url = os.environ["MONGO_URL"]
@@ -680,6 +681,7 @@ app.include_router(api)
 app.include_router(kegs_router)      # split: kegs + prep-view + analytics
 app.include_router(tables_router)    # split: tables endpoints
 app.include_router(orders_router)    # split: orders + exclusivity totals engine
+app.include_router(loyalty_router)   # split: loyalty & rewards (points/tiers/stamps/spin/scratch)
 
 app.add_middleware(
     CORSMiddleware,

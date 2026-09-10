@@ -61,7 +61,23 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
-## What's Implemented (v16 · Feb 2026 — Iter 23)
+## What's Implemented (v18 · Feb 2026 — Iter 26 · Loyalty Follow-ups)
+- **Tier-promotion detection fix**: `orders.pay_order` now snapshots the member BEFORE `$set` and passes the pre-payment `lifetime_spend` into `loyalty.on_payment_earn`, so the "Promoted to X" award actually fires when the current order crosses a threshold (previously dead code — pre & post spend were identical).
+- **Loyalty progress bar math fix**: `Loyalty.jsx` now computes progress relative to the *band* between the current and next tier (`(spend - currentMin) / (nextMin - currentMin)`) instead of the raw next-tier ratio. Bronze @ HK$1200 now renders ~24% of the way to Silver, not misleading numbers.
+- **Regex-escape hardening**: `GET /api/members?q=` now escapes metachars via `re.escape` before feeding to the Mongo `$regex` query, so user input containing `(`, `[`, `.` no longer throws or matches unexpectedly.
+
+## What's Implemented (v17 · Feb 2026 — Iter 25 · Loyalty Program)
+- **Full P0 loyalty & rewards system** at `/app/backend/routers/loyalty.py` + `/api/loyalty/*`:
+  - **Points engine** — tier multiplier on top of base 10-per-HK$100 (Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×).
+  - **Tier ladder** by `lifetime_spend` — Bronze 0 / Silver 5000 / Gold 15000 / Platinum 50000. Auto-promotes on payment; UI shows next-tier progress bar.
+  - **Stamp card** — 10 visits → HK$88 "free house cocktail" voucher (Platinum earns 2× stamps).
+  - **Daily spin wheel** — one/day per member; 7-prize weighted pool (points 40+22%, stamp 15%, HK$20/50 vouchers 10+8%, free drink 4%, HK$200 jackpot 1%). Uses `secrets` CSPRNG.
+  - **Scratch tickets** — ~20% chance dropped on payment; tap-to-reveal same prize pool.
+  - **Voucher wallet** — auto-issued vouchers with unique code, kind, discount, 60-day expiry. `POST /api/loyalty/vouchers/{id}/redeem` stacks cash discount onto an open order (exclusivity engine still caps to un-locked lines).
+  - **Birthday auto-issue** — once/year, tier-scaled % off voucher (Bronze 5% → Platinum 25%), 30-day expiry.
+- **New `/loyalty` page + "Rewards" nav item**: member picker → dashboard with tier badge + progress, stamp grid, spinning wheel (0.3s CSS spin, 2.5s reveal), scratch card, voucher wallet.
+- **Auto-hooked from `orders.pay_order`** — every paid order with a `member_id` invokes `on_payment_earn` for bonus points + stamps + scratch drop + tier promotion + birthday check.
+- **Endpoints verified via curl**: summary (tier=Bronze, 88 pts), spin (won +50 points), tiers ladder (4 tiers listed).
 - **Peak-Rush Auto-Flash**: `RegisterUpsellStrip` starts a 90s timer whenever the top hint appears. If not accepted, the top chip flashes amber (ring + pulse animation) and a sonner toast fires: `Push this now: +1 <Product> → <Combo>`. Timer resets whenever the top hint changes or is accepted.
 - **Nudges on QuickBar tiles**: Every tile with a `+1 → -X%` hint POSTs `shown` (deduped via ref map). Tapping the tile POSTs `accepted`. Clearing the tab or completing Send & Pay flushes remaining un-accepted hints as `dismissed`.
 - **Nudges on Floorplan glow**: The 8s combo-hints poll now diffs against a `fpShownRef` — new hints POST `shown` with `source: "floorplan"`, hints that disappear from the feed POST `dismissed`. Every table-glow ping now feeds the leaderboard.

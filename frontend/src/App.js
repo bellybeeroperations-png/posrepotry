@@ -19,6 +19,7 @@ import Kegs from "@/pages/Kegs";
 import QuickBar from "@/pages/QuickBar";
 import Delivery from "@/pages/Delivery";
 import UpsellLog from "@/pages/UpsellLog";
+import Loyalty from "@/pages/Loyalty";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="/bar" element={<Protected><QuickBar /></Protected>} />
           <Route path="/delivery" element={<Protected><Delivery /></Protected>} />
           <Route path="/upsell" element={<Protected><UpsellLog /></Protected>} />
+          <Route path="/loyalty" element={<Protected><Loyalty /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

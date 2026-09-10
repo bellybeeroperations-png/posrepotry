@@ -296,8 +296,13 @@ async def pay_order(oid: str, body: PaymentIn, user: dict = Depends(get_current_
         item_names = [l["name"] for l in o.get("lines", [])]
         member = await db.members.find_one({"_id": _oid(o["member_id"])})
         if member:
+            # Snapshot pre-payment lifetime_spend BEFORE the $set so tier promotion
+            # detection in on_payment_earn works (previously dead-code — pre & post
+            # spend were identical because the $set had already run).
+            pre_spend = member.get("lifetime_spend", 0.0)
+            pre_snapshot = {**member, "lifetime_spend": pre_spend}
             visits = member.get("visits", 0) + 1
-            lifetime = member.get("lifetime_spend", 0.0) + o["total"]
+            lifetime = pre_spend + o["total"]
             points = member.get("points", 0) + int(o["total"] // 10)
             fav = list(set((member.get("favorite_items") or []) + item_names))[:20]
             avg_prev = member.get("avg_duration_min", 0) or 0
@@ -310,6 +315,12 @@ async def pay_order(oid: str, body: PaymentIn, user: dict = Depends(get_current_
                     "avg_duration_min": avg_new,
                 }},
             )
+            # Loyalty auto-earn — pass pre-payment snapshot so tier promotion fires.
+            try:
+                from routers.loyalty import on_payment_earn
+                await on_payment_earn(pre_snapshot, o)
+            except Exception:
+                pass  # loyalty is best-effort; must not block pay
     return serialize(await db.orders.find_one({"_id": _oid(oid)}))
 
 
