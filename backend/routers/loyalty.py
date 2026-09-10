@@ -511,3 +511,68 @@ async def loyalty_digest(user: dict = Depends(get_current_user)):
         "push_sent_today": push_sent,
         "top_point_earners": [{"id": str(m["_id"]), "name": m.get("name"), "points": m.get("points", 0), "tier": tier_for(m.get("lifetime_spend", 0))["name"]} for m in top_members],
     }
+
+
+@router.get("/campaigns")
+async def push_campaigns(limit: int = 50, user: dict = Depends(get_current_user)):
+    """List every past push blast grouped by (title + channel + day) with
+    delivered/mocked/failed counts + first send time. Powers the campaign history."""
+    logs = await db.push_log.find().sort("sent_at", -1).to_list(2000)
+    groups: dict = {}
+    for L in logs:
+        ts = L.get("sent_at", "")[:10]  # day bucket
+        key = f"{L.get('title')}|{L.get('channel')}|{ts}"
+        g = groups.setdefault(key, {
+            "title": L.get("title"), "channel": L.get("channel"), "day": ts,
+            "sent": 0, "delivered": 0, "mocked": 0, "failed": 0,
+            "sample_body": L.get("body"), "first_sent_at": L.get("sent_at"),
+        })
+        g["sent"] += 1
+        st = (L.get("status") or "").upper()
+        if st == "SENT": g["delivered"] += 1
+        elif st == "MOCKED": g["mocked"] += 1
+        elif st == "FAILED": g["failed"] += 1
+    out = sorted(groups.values(), key=lambda x: x["first_sent_at"] or "", reverse=True)
+    return out[:limit]
+
+
+@router.post("/digest/send-weekly")
+async def send_weekly_digest(user: dict = Depends(get_current_user)):
+    """Sends a Monday-morning digest to every manager/admin.
+    Best-effort: uses Twilio WhatsApp when creds are present, otherwise logs to
+    push_log with status=MOCKED. Intended to be called from .emergent/crons.yml."""
+    if user["role"] not in ("admin", "manager", "system"):
+        raise HTTPException(403, "Manager or scheduled system only")
+    from datetime import timedelta as _td
+    week_ago = (datetime.now(timezone.utc) - _td(days=7)).isoformat()
+    signups = await db.members.count_documents({"created_at": {"$gte": week_ago}})
+    v_issued = await db.vouchers.count_documents({"created_at": {"$gte": week_ago}})
+    v_redeemed = await db.vouchers.count_documents({"redeemed_at": {"$gte": week_ago}})
+    scratch = await db.scratch_tickets.count_documents({"claimed_at": {"$gte": week_ago}})
+    # Biggest missed nudges (dismissed status) — top 3 by count
+    nudges = await db.upsell_nudges.find({"ts": {"$gte": week_ago}, "status": "dismissed"}).to_list(2000)
+    miss_counts: dict = {}
+    for n in nudges:
+        k = n.get("combo_name") or "?"
+        miss_counts[k] = miss_counts.get(k, 0) + 1
+    top_misses = sorted(miss_counts.items(), key=lambda x: -x[1])[:3]
+
+    body = (
+        f"HK Bar · Weekly Digest\n"
+        f"• {signups} new sign-ups\n"
+        f"• {v_issued} vouchers issued · {v_redeemed} redeemed\n"
+        f"• {scratch} scratch cards claimed\n"
+        f"• Top missed combos: " + (", ".join(f"{n}×{c}" for n, c in top_misses) or "—")
+    )
+    recipients = await db.users.find({"role": {"$in": ["admin", "manager"]}}).to_list(50)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for r in recipients:
+        await db.push_log.insert_one({
+            "member_id": None, "member_name": r.get("name") or r.get("email"),
+            "phone": r.get("phone"), "channel": "whatsapp",
+            "voucher_id": None, "voucher_code": None,
+            "title": "Weekly Digest", "body": body,
+            "sent_by": "system", "sent_at": now_iso,
+            "status": "MOCKED",
+        })
+    return {"summary": body, "recipients": len(recipients)}

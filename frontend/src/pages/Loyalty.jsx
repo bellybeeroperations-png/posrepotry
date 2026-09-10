@@ -334,6 +334,23 @@ function PushComposer() {
           </div>
         )}
       </div>
+
+      {/* Preview Receipt — mock phone showing what members will see */}
+      <div data-testid="push-preview-phone" className="mt-4 mx-auto w-64 rounded-[24px] border-4 border-[var(--border)] bg-black p-2 shadow-lg">
+        <div className="h-4 flex justify-center"><div className="w-16 h-1 rounded-full bg-[var(--muted)]/40" /></div>
+        <div className="p-3 bg-[var(--surface)] rounded-[14px]">
+          <div className="text-[10px] font-mono uppercase text-[var(--muted)] mb-1 flex items-center gap-1">
+            {channel === "whatsapp" ? "💚 WhatsApp · HK Bar" : channel === "sms" ? "📱 SMS · HK Bar" : "✉️ Email · HK Bar"}
+          </div>
+          <div className="p-2 rounded-lg bg-[var(--surface-2)] text-xs leading-snug">
+            <b>{title || "Your title here…"}</b>
+            <div className="text-[10px] font-mono mt-1 opacity-80">
+              use code <b>V-XXXXXXXX</b> · expires in {ttl}d · HK${amount} off
+            </div>
+          </div>
+          <div className="text-[9px] font-mono text-[var(--muted)] text-right mt-1">just now · via {channel}</div>
+        </div>
+      </div>
     </div>
   );
 }
