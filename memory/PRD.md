@@ -61,6 +61,9 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v15 · Feb 2026 — Iter 22)
+- **Dismiss Tracking**: `RegisterUpsellStrip` now remembers every shown nudge in a `pendingRef` map (keyed by `order|combo|product`). On accept the entry is deleted (no dismiss). When the order transitions to `paid` or `voided`, every remaining pending nudge is flushed as `POST /api/upsell/log {status: "dismissed"}`. Leaderboard conversion % now reflects reality.
+
 ## What's Implemented (v14 · Feb 2026 — Iter 21)
 - **Combo Heat-Map on Register**: new `RegisterUpsellStrip` component renders a cyan pulse-dot strip above the ProductGrid with the top-3 combos exactly one product-tap away from firing. Chips read `+1 <Product> → -X% (Combo)` with a net-gain badge; tapping a chip adds the product and logs an `accepted` nudge.
 - **Live Upsell Nudge Log**: new backend collection `upsell_nudges` + three endpoints:

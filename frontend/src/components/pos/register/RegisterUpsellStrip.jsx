@@ -65,14 +65,14 @@ export default function RegisterUpsellStrip({ order, totals, combos, products, o
     return out.slice(0, 3);
   }, [order, totals, combos, products]);
 
-  // Log 'shown' nudges (deduped server-side within 60s)
-  const shownRef = useRef(new Set());
+  // Log 'shown' nudges (deduped server-side within 60s); remember metadata so we
+  // can fire 'dismissed' if the ticket closes without the hint being accepted.
+  const pendingRef = useRef(new Map()); // key -> {combo_name, product_id, product_name, potential_discount, order_id, table_id}
   useEffect(() => {
     hints.forEach((h) => {
       const key = `${order?.id || "draft"}-${h.combo}-${h.product.id}`;
-      if (shownRef.current.has(key)) return;
-      shownRef.current.add(key);
-      api.post("/upsell/log", {
+      if (pendingRef.current.has(key)) return;
+      const meta = {
         order_id: order?.id || null,
         table_id: order?.table_id || null,
         combo_name: h.combo,
@@ -80,12 +80,32 @@ export default function RegisterUpsellStrip({ order, totals, combos, products, o
         product_name: h.product.name,
         potential_discount: h.value,
         source: "register",
-        status: "shown",
-      }).catch((err) => console.warn("[upsell/log shown]", err));
+      };
+      pendingRef.current.set(key, meta);
+      api.post("/upsell/log", { ...meta, status: "shown" })
+        .catch((err) => console.warn("[upsell/log shown]", err));
     });
   }, [hints, order?.id, order?.table_id]);
 
+  // Flush every still-pending nudge as 'dismissed' the moment the ticket closes
+  // (paid or voided) — this makes the leaderboard's conversion % honest.
+  const prevStatusRef = useRef(order?.status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const cur = order?.status;
+    prevStatusRef.current = cur;
+    if ((cur === "paid" || cur === "voided") && prev !== cur && pendingRef.current.size > 0) {
+      for (const meta of pendingRef.current.values()) {
+        api.post("/upsell/log", { ...meta, status: "dismissed" })
+          .catch((err) => console.warn("[upsell/log dismissed]", err));
+      }
+      pendingRef.current.clear();
+    }
+  }, [order?.status]);
+
   const accept = (h) => {
+    const key = `${order?.id || "draft"}-${h.combo}-${h.product.id}`;
+    pendingRef.current.delete(key);  // no longer eligible for dismiss
     api.post("/upsell/log", {
       order_id: order?.id || null,
       table_id: order?.table_id || null,
