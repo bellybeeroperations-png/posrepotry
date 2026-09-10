@@ -60,7 +60,7 @@ export default function Reports() {
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={data.by_category} dataKey="revenue" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={80} paddingAngle={2}>
-                {data.by_category.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                {data.by_category.map((c, i) => <Cell key={c.name} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ background: "#121824", border: "1px solid #26334D" }} />
             </PieChart>

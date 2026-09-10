@@ -1,0 +1,27 @@
+{
+  "summary": "Iter24 code-review regression pass — ALL GREEN. Backend 12/12 pytest (test_iter13_exclusivity + test_iter17_features) pass; delivery/simulate returns valid order (order_type=delivery, platform in {foodpanda,deliveroo,keeta}, lines.fired_at set) and shows in /api/delivery/inbox after secrets-random swap. Frontend: /reports, /menu, /crm, /floorplan all render with 0 React unique-key warnings and 0 console errors. Sports ticker renders 12 items (6 games x2 duplicated) without duplicate-key errors. AuthContext memoization intact — logout via btn-logout redirects to /login, re-login via email+password redirects to /floorplan, ADMIN chip renders in topbar, no infinite re-render loop.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "pytest_iter13_exclusivity": "PASS (5/5)",
+    "pytest_iter17_features": "PASS (7/7) — delivery simulate+inbox, preauth basic/invalid/with_table, combo hints, substitutes",
+    "frontend_key_warnings_/reports": "0",
+    "frontend_key_warnings_/menu": "0",
+    "frontend_key_warnings_/crm": "0",
+    "frontend_key_warnings_/floorplan": "0",
+    "sports_ticker_items": "12 (>=6 required, no duplicate-key warnings)",
+    "auth_logout_relogin": "PASS — redirects to /floorplan, ADMIN chip visible, no re-render loop, 0 console errors"
+  },
+  "test_report_links": ["/app/backend/tests/test_iter13_exclusivity.py", "/app/backend/tests/test_iter17_features.py"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Note (minor, not blocking): Floorplan.jsx line 475 sports-ticker map still uses `key={i}` on `[...games, ...games]`. Review request stated this was swapped to a stable key; actual code still uses index. React does NOT emit a unique-key warning here because indices are unique amongst siblings, so behavior is correct. Consider `key={`${g.league}-${i}`}` or `key={`${g.match}-${i%games.length}`}` for stability if games array becomes reorderable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (all 4 routes + auth flow clean)"},
+  "test_credentials": "admin polymuze111@gmail.com / admin123 — worked",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter24 regression is fully green. Only observation: Floorplan sports ticker still uses index-as-key at line 475 despite the review request stating it was swapped; this is not a runtime issue (no warnings) but doesn't match the claim in the review request. Safe to ignore unless main agent wants literal compliance."
+}

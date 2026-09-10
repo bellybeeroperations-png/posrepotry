@@ -238,7 +238,7 @@ export default function Menu() {
                   </div>
                   <div className="text-[10px] font-mono uppercase text-[var(--muted)] mt-1">When ticket contains:</div>
                   <div className="text-xs flex flex-wrap gap-1 mt-1">
-                    {names.map((n, i) => <span key={i} className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">{n}</span>)}
+                    {names.map((n) => <span key={n} className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">{n}</span>)}
                   </div>
                 </div>
               );

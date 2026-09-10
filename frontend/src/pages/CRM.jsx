@@ -115,7 +115,7 @@ export default function CRM() {
                 <div className="text-[10px] font-mono uppercase text-[var(--muted)] mb-1">Favorite Items</div>
                 <div className="flex flex-wrap gap-1">
                   {(sel.member.favorite_items || []).slice(0, 10).map((f, i) => (
-                    <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">{f}</span>
+                    <span key={f} className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">{f}</span>
                   ))}
                   {(!sel.member.favorite_items || !sel.member.favorite_items.length) && (
                     <span className="text-xs text-[var(--muted)]">No history yet</span>
