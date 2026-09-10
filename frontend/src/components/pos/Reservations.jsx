@@ -74,7 +74,8 @@ export function ReservationModal({ table, onClose, onSaved }) {
   );
 }
 
-export function TableActionModal({ table, onClose, onSeat, onCancel, onReserve, onOpen, onQR }) {
+export function TableActionModal({ table, onClose, onSeat, onCancel, onReserve, onOpen, onQR, onMerge, otherOccupied }) {
+  const [pickMerge, setPickMerge] = useState(false);
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
@@ -93,34 +94,67 @@ export function TableActionModal({ table, onClose, onSeat, onCancel, onReserve, 
             </div>
           </div>
         )}
-        <div className="space-y-2">
-          {(table.status === "available" || table.status === "reserved") && (
-            <button data-testid="action-open-order" onClick={onOpen} className="w-full btn-neon py-3 rounded-lg">
-              {table.reservation ? "Seat & Open Order" : "Open New Order"}
+
+        {pickMerge && table.status === "occupied" && (
+          <div data-testid="merge-picker" className="mb-3 rounded-lg border border-[var(--cyan)]/40 bg-[var(--cyan)]/5 p-3">
+            <div className="text-[10px] font-mono uppercase text-[var(--cyan)] mb-2">Merge INTO which tab?</div>
+            {(otherOccupied || []).length === 0 && (
+              <div className="text-xs text-[var(--muted)]">No other occupied tables to merge with.</div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {(otherOccupied || []).map((t) => (
+                <button key={t.id} data-testid={`merge-target-${t.name}`}
+                  onClick={() => onMerge(t)}
+                  className="p-2 rounded-lg border border-[var(--cyan)]/40 bg-[var(--surface-2)] text-left hover:border-[var(--cyan)]">
+                  <div className="font-display font-bold text-sm">Table {t.name}</div>
+                  <div className="text-[10px] font-mono text-[var(--muted)]">
+                    {t.current_order?.guests || 0} pax · HK${t.current_order?.total || 0}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPickMerge(false)} className="mt-2 text-[10px] font-mono uppercase text-[var(--muted)]">Cancel merge</button>
+          </div>
+        )}
+
+        {!pickMerge && (
+          <div className="space-y-2">
+            {(table.status === "available" || table.status === "reserved") && (
+              <button data-testid="action-open-order" onClick={onOpen} className="w-full btn-neon py-3 rounded-lg">
+                {table.reservation ? "Seat & Open Order" : "Open New Order"}
+              </button>
+            )}
+            {table.status === "occupied" && (
+              <>
+                <button data-testid="action-continue-order" onClick={onOpen} className="w-full btn-neon py-3 rounded-lg">
+                  Continue Order
+                </button>
+                {onMerge && (
+                  <button data-testid="action-merge" onClick={() => setPickMerge(true)}
+                    className="w-full py-3 rounded-lg bg-[var(--cyan)]/15 border border-[var(--cyan)] text-[var(--cyan)] font-semibold">
+                    Merge Into Another Tab…
+                  </button>
+                )}
+              </>
+            )}
+            {table.status === "available" && !table.reservation && (
+              <button data-testid="action-reserve" onClick={onReserve}
+                className="w-full py-3 rounded-lg bg-[var(--purple)]/15 border border-[var(--purple)] text-[var(--purple)] font-semibold">
+                Reserve
+              </button>
+            )}
+            <button data-testid="action-qr" onClick={onQR}
+              className="w-full py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--cyan)] font-semibold">
+              Menu QR Code
             </button>
-          )}
-          {table.status === "occupied" && (
-            <button data-testid="action-continue-order" onClick={onOpen} className="w-full btn-neon py-3 rounded-lg">
-              Continue Order
-            </button>
-          )}
-          {table.status === "available" && !table.reservation && (
-            <button data-testid="action-reserve" onClick={onReserve}
-              className="w-full py-3 rounded-lg bg-[var(--purple)]/15 border border-[var(--purple)] text-[var(--purple)] font-semibold">
-              Reserve
-            </button>
-          )}
-          <button data-testid="action-qr" onClick={onQR}
-            className="w-full py-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--cyan)] font-semibold">
-            Menu QR Code
-          </button>
-          {table.reservation && (
-            <button data-testid="action-cancel-res" onClick={onCancel}
-              className="w-full py-3 rounded-lg bg-[var(--rose)]/10 border border-[var(--rose)] text-[var(--rose)] font-semibold">
-              Cancel Reservation
-            </button>
-          )}
-        </div>
+            {table.reservation && (
+              <button data-testid="action-cancel-res" onClick={onCancel}
+                className="w-full py-3 rounded-lg bg-[var(--rose)]/10 border border-[var(--rose)] text-[var(--rose)] font-semibold">
+                Cancel Reservation
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

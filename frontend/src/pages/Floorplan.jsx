@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, DollarSign, AlertCircle, Radio, Trophy, Target } from "lucide-react";
+import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, DollarSign, AlertCircle, Radio, Trophy, Target, MoonStar } from "lucide-react";
 import { ReservationModal, TableActionModal } from "@/components/pos/Reservations";
 import { QRCode as QRModal } from "@/components/pos/QRCode";
 
@@ -151,6 +151,37 @@ export default function Floorplan() {
     } catch { toast.error("Failed"); }
   };
 
+  const mergeInto = async (target) => {
+    const srcOrderId = selTable?.current_order?.id;
+    const tgtOrderId = target?.current_order?.id;
+    if (!srcOrderId || !tgtOrderId) return toast.error("Both tabs must be open");
+    try {
+      const r = await api.post("/orders/merge", { source_id: srcOrderId, target_id: tgtOrderId });
+      toast.success(`Merged into Table ${target.name} · ${r.data.line_count} lines · ${fmtHKD(r.data.total)}`);
+      setSelTable(null);
+      const [a, all] = await Promise.all([
+        api.get("/tables", { params: { area_id: activeArea } }),
+        api.get("/tables"),
+      ]);
+      setTables(a.data); setAllTables(all.data);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Merge failed"); }
+  };
+
+  const autoCloseAll = async () => {
+    const openTabs = allTables.filter(t => t.status === "occupied").length;
+    if (openTabs === 0) return toast.info("No open tabs");
+    if (!confirm(`Auto-close ${openTabs} open tab(s) as paid-by-card? This can't be undone.`)) return;
+    try {
+      const r = await api.post("/orders/auto-close", { method: "card", note: "Last call · Floorplan auto-close" });
+      toast.success(`Auto-closed ${r.data.closed} tab(s) · ${fmtHKD(r.data.revenue)}`);
+      const [a, all] = await Promise.all([
+        api.get("/tables", { params: { area_id: activeArea } }),
+        api.get("/tables"),
+      ]);
+      setTables(a.data); setAllTables(all.data);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Business KPI bar */}
@@ -208,6 +239,11 @@ export default function Floorplan() {
               <Plus size={14} /> Add Table
             </button>
           )}
+          <button data-testid="btn-auto-close" onClick={autoCloseAll}
+            className="px-4 py-2 rounded-lg font-mono text-xs uppercase tracking-widest border border-[var(--rose)] bg-[var(--rose)]/10 text-[var(--rose)] flex items-center gap-2 hover:bg-[var(--rose)]/20"
+            title="Batch-settle every open tab at last call">
+            <MoonStar size={14} /> Last Call · Auto-Close
+          </button>
         </div>
       </div>
 
@@ -315,6 +351,8 @@ export default function Floorplan() {
           onReserve={() => { setReserveTable(selTable); setSelTable(null); }}
           onCancel={() => cancelReservation(selTable)}
           onQR={() => { setQrTable(selTable); setSelTable(null); }}
+          onMerge={mergeInto}
+          otherOccupied={allTables.filter(t => t.status === "occupied" && t.id !== selTable.id)}
         />
       )}
       {reserveTable && (

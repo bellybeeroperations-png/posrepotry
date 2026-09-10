@@ -1,0 +1,39 @@
+{
+  "summary": "Iter16 retest #3 of CartTicket immutable updater fix. Verified /app/frontend/src/components/pos/register/CartTicket.jsx lines 118-140 use `o.lines.map((l, idx) => idx === i ? { ...l, ...updated } : l)` (grep of `lines[i].` = 0 occurrences confirmed). Performed frontend UI test with hard reload after login. All three flows PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "seat_cycle_guests_4": {
+      "expected": "S1 -> S2 -> S3 -> S4 -> S1",
+      "actual": "S1 -> S2 -> S3 -> S4 -> S1",
+      "status": "PASS"
+    },
+    "qty_plus_regression": {
+      "expected": "1 -> 2 -> 3 (increment by 1 each click)",
+      "actual": "HK$138 (qty 1) -> HK$276 (qty 2) -> HK$414 (qty 3); price triples cleanly, confirming qty went 1->2->3 not 1->3->5",
+      "status": "PASS"
+    },
+    "hold_toggle_regression": {
+      "expected": "HELD appears after click 1, disappears after click 2",
+      "actual": "HELD=True after click 1, HELD=False after click 2",
+      "status": "PASS"
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CartTicket.jsx qtyChange/toggleHold/cycleSeat correctly use immutable .map() updater pattern — no stale-closure / double-apply bug remains."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100%"},
+  "test_credentials": "admin polymuze111@gmail.com / admin123 (worked)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "CartTicket immutable updater fix is fully verified. Seat cycle for guests=4 cycles cleanly S1->S2->S3->S4->S1 with one click per step. Qty +/- increments by 1 per click. Hold toggle flips state per click. No further retest needed on this bundle.",
+  "rca of the issue": "Prior iterations reported doubling because updaters mutated `lines[i].seat = ...` inside setOrder, which under React 18 StrictMode / double-invoke could apply twice per click. Current impl clones via `o.lines.map((l, idx) => idx === i ? { ...l, ...next } : l)` — pure, idempotent, and verified stable."
+}

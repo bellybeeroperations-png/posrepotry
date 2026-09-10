@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fmtHKD } from "@/lib/api";
 import {
-  Plus, Minus, Trash2, Pause, Play, Flame, Lock,
+  Plus, Minus, Trash2, Pause, Play, Flame, Lock, ArrowLeftRight,
   ShoppingBag, Truck, UtensilsCrossed, User as UserIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -118,14 +118,24 @@ function FireCourseBar({ onFire, disabled }) {
 function TicketLines({ order, setOrder, onRemove, totals }) {
   const qtyChange = (i, d) =>
     setOrder((o) => {
-      const lines = [...o.lines];
-      lines[i].qty = Math.max(1, lines[i].qty + d);
+      const lines = o.lines.map((l, idx) =>
+        idx === i ? { ...l, qty: Math.max(1, l.qty + d) } : l
+      );
       return { ...o, lines };
     });
   const toggleHold = (i) =>
     setOrder((o) => {
-      const lines = [...o.lines];
-      lines[i].held = !lines[i].held;
+      const lines = o.lines.map((l, idx) => (idx === i ? { ...l, held: !l.held } : l));
+      return { ...o, lines };
+    });
+  const cycleSeat = (i) =>
+    setOrder((o) => {
+      const guests = Math.max(1, o.guests || 1);
+      const lines = o.lines.map((l, idx) => {
+        if (idx !== i) return l;
+        const cur = l.seat || 1;
+        return { ...l, seat: (cur % guests) + 1 };
+      });
       return { ...o, lines };
     });
 
@@ -141,7 +151,7 @@ function TicketLines({ order, setOrder, onRemove, totals }) {
       {order.lines.map((l, i) => {
         const hhLocked = hhSet.has(l.product_id);
         const comboLocked = comboSet.has(l.product_id);
-        const locked = hhLocked || comboLocked;
+        const seat = l.seat || 1;
         return (
         <div key={`${l.product_id}-${l.variant || ""}-${i}`}
           data-testid={`cart-line-${i}`}
@@ -153,7 +163,14 @@ function TicketLines({ order, setOrder, onRemove, totals }) {
           }`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
-              <div className="font-semibold text-sm text-white">{l.name}</div>
+              <div className="font-semibold text-sm text-white flex items-center gap-1.5">
+                <button data-testid={`line-seat-${i}`} onClick={() => cycleSeat(i)}
+                  title="Cycle seat #"
+                  className="px-1.5 py-0.5 rounded bg-[var(--purple)]/20 border border-[var(--purple)]/40 text-[var(--purple)] text-[10px] font-mono flex items-center gap-1 hover:bg-[var(--purple)]/30">
+                  <ArrowLeftRight size={9} /> S{seat}
+                </button>
+                <span>{l.name}</span>
+              </div>
               {l.modifiers?.length > 0 && (
                 <div className="text-[10px] text-[var(--muted)]">+ {l.modifiers.join(", ")}</div>
               )}

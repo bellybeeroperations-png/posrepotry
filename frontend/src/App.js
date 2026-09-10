@@ -16,6 +16,7 @@ import Shift from "@/pages/Shift";
 import MobileMenu from "@/pages/MobileMenu";
 import Waitlist from "@/pages/Waitlist";
 import Kegs from "@/pages/Kegs";
+import QuickBar from "@/pages/QuickBar";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/shift" element={<Protected><Shift /></Protected>} />
           <Route path="/waitlist" element={<Protected><Waitlist /></Protected>} />
           <Route path="/kegs" element={<Protected><Kegs /></Protected>} />
+          <Route path="/bar" element={<Protected><QuickBar /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

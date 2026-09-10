@@ -1,0 +1,50 @@
+{
+  "summary": "Iter 14 — tested Deal-Of-The-Night scheduling, Auto-Close, Merge, Move-line on backend (6/6 pytest passing) and QuickBar + Combo Schedule editor + Auto-Close btn + Seat cycle on frontend. Backend all green. Frontend: QuickBar 3-tile flow + cash payment + receipt modal works. Combo schedule fields render (Mon..Sun/start/end). Auto-Close button on Floorplan clickable. FOUND: seat cycle skips seats in dev/StrictMode due to state mutation in cycleSeat.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CartTicket.cycleSeat",
+        "issue": "Seat cycle skips values in React.StrictMode because updater mutates lines[i] directly (lines[i].seat = ...). StrictMode invokes the updater twice with the same reference, so the mutation compounds: e.g. guests=4 produced S1->S3->S1->S3 instead of S1->S2->S3->S4->S1. In production build it will not skip (StrictMode double-invoke is dev-only), but the updater is impure and should be fixed for correctness.",
+        "selector": "[data-testid=\"line-seat-0\"]",
+        "priority": "MEDIUM",
+        "fix_hint": "Replace lines[i].seat = ... with lines[i] = { ...lines[i], seat: (cur % guests) + 1 } so the updater is a pure function of its input."
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_features.py",
+    "/app/test_reports/pytest/iter14.xml"
+  ],
+  "action_items": [
+    "Fix cycleSeat impurity in CartTicket.jsx (mutation inside setOrder updater). Use immutable line copy so React.StrictMode double-invoke does not double-cycle the seat."
+  ],
+  "critical_code_review_comments": [
+    "routers/orders.py: _combo_in_window supports cross-midnight windows correctly (start>end) and empty days => any day. Good.",
+    "routers/orders.py auto_close endpoint: recomputes revenue as sum of order totals, records payment.auto_closed=True, and frees tables to 'dirty' — matches spec. Guarded to admin/manager only.",
+    "routers/orders.py merge_orders: recomputes totals via _compute_totals on merged lines and voids source with merged_into ref — good.",
+    "routers/orders.py move_line: pop+append pattern moves line but does not preserve insertion order in target — acceptable, matches test.",
+    "CartTicket.cycleSeat mutates state (bug — see ui_bugs). Same pattern check should be applied to any other setOrder updaters — a quick grep is warranted.",
+    "ComboEditor: schedule fields render only when combo-schedule-toggle is on; time inputs use native <input type='time'> which is fine.",
+    "QuickBar.jsx: cash/card flow POSTs order, fires, then pays and shows Receipt — verified end-to-end (subtotal HK$404.8 for 3 cocktails; receipt rendered)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_features.py",
+    "/app/test_reports/iteration_14.json"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6)",
+    "frontend": "80% (4/5 flows fully verified; merge UI blocked by seeded overlapping test tables from iter11 — action-merge selector not surfaced because the click at coord of T1 hit a stale TEST_T_iter11_upd table on top; merge backend endpoint itself is green)"
+  },
+  "test_credentials": "admin polymuze111@gmail.com/admin123, bartender bartender@hkbar.com/bartender123",
+  "seed_data_creation": "Created + torn down temp combos TEST_ITER14_DOTN_OUT, TEST_ITER14_SMALL, TEST_ITER14_BIG, TEST_ITER14_SCHED_UI in test flows. Seeded 'Cocktail Duo', 'Beer & Bites', 'Steak Night · any 2 mains' combos remain intact and are asserted present by test_seeded_combos_present.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest tests/test_iter14_features.py is fast (~2s) and self-cleaning. Frontend UI: QuickBar works; use await page.wait_for_selector('[data-testid^=\"qb-tile-\"]') to avoid race. Merge UI verification is blocked by leftover seeded table 'TEST_T_iter11_upd' overlapping T1 in the floorplan canvas — either delete that stale table first or click a non-overlapping occupied table before invoking action-merge. Combo schedule persistence via UI needs a product selected in Slot A before Save Combo will accept the payload; add product selection to the persistence flow.",
+  "rca_of_the_issue": "Seat cycle skip (S1->S3): React.StrictMode intentionally invokes state-updater functions twice in dev to surface impurities. CartTicket.cycleSeat does `lines[i].seat = (cur % guests) + 1`, mutating the same line object from o.lines. The two updater calls share the same object reference so the second call sees the already-cycled value and cycles again. Reproduce: set guests=N (>=3), click line-seat-0 once, observe seat increases by 2 instead of 1. Fix by replacing the object mutation with `lines[i] = { ...lines[i], seat: (cur % guests) + 1 }` (or use functional immutable update)."
+}

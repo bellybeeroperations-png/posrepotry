@@ -1,27 +1,33 @@
 import { useState } from "react";
 import { fmtHKD } from "@/lib/api";
-import { X, Search, Plus, Trash2 } from "lucide-react";
+import { X, Search, Plus, Trash2, Clock } from "lucide-react";
 
 const SLOT_LABELS = ["Slot A", "Slot B", "Slot C", "Slot D"];
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function ComboEditor({ combo, products, onClose, onSave }) {
   const [name, setName] = useState(combo?.name || "");
   const [type, setType] = useState(combo?.discount_type || "percent");
   const [value, setValue] = useState(combo?.discount_value ?? 15);
   const [active, setActive] = useState(combo?.active ?? true);
-  // Migrate legacy flat product_ids → single OR slot
   const initialSlots = combo?.slots?.length
     ? combo.slots
     : (combo?.product_ids?.length
         ? [{ operator: "or", min_qty: 1, max_qty: 99, product_ids: combo.product_ids }]
         : [{ operator: "or", min_qty: 1, max_qty: 1, product_ids: [] }]);
   const [slots, setSlots] = useState(initialSlots);
+  // Deal-of-the-night rotator
+  const [schedEnabled, setSchedEnabled] = useState(!!combo?.schedule);
+  const [days, setDays] = useState(combo?.schedule?.days || []);
+  const [startT, setStartT] = useState(combo?.schedule?.start_time || "17:00");
+  const [endT, setEndT] = useState(combo?.schedule?.end_time || "19:00");
 
   const updSlot = (i, k, v) => setSlots(slots.map((s, idx) => idx === i ? { ...s, [k]: v } : s));
   const toggleProd = (i, pid) => updSlot(i, "product_ids",
     slots[i].product_ids.includes(pid) ? slots[i].product_ids.filter(x => x !== pid) : [...slots[i].product_ids, pid]);
   const addSlot = () => slots.length < 4 && setSlots([...slots, { operator: "or", min_qty: 1, max_qty: 1, product_ids: [] }]);
   const delSlot = (i) => setSlots(slots.filter((_, idx) => idx !== i));
+  const toggleDay = (d) => setDays(days.includes(d) ? days.filter(x => x !== d) : [...days, d].sort());
 
   const canSave = name && slots.every(s => s.product_ids.length >= 1);
 
@@ -50,13 +56,55 @@ export function ComboEditor({ combo, products, onClose, onSave }) {
           </Field>
         </div>
 
-        <button data-testid="combo-active" onClick={() => setActive(!active)}
-          className={`mb-4 px-3 py-1.5 rounded-md text-xs font-mono uppercase border ${
-            active ? "bg-[var(--emerald)]/20 border-[var(--emerald)] text-[var(--emerald)]"
-                   : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--muted)]"
-          }`}>
-          {active ? "Active" : "Paused"}
-        </button>
+        <div className="flex items-center gap-2 mb-4">
+          <button data-testid="combo-active" onClick={() => setActive(!active)}
+            className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase border ${
+              active ? "bg-[var(--emerald)]/20 border-[var(--emerald)] text-[var(--emerald)]"
+                     : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--muted)]"
+            }`}>
+            {active ? "Active" : "Paused"}
+          </button>
+          <button data-testid="combo-schedule-toggle" onClick={() => setSchedEnabled(!schedEnabled)}
+            className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase border flex items-center gap-1 ${
+              schedEnabled ? "bg-[var(--amber)]/20 border-[var(--amber)] text-[var(--amber)]"
+                           : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--muted)]"
+            }`}>
+            <Clock size={12} /> {schedEnabled ? "Scheduled" : "Always-on"}
+          </button>
+        </div>
+
+        {schedEnabled && (
+          <div data-testid="combo-schedule" className="mb-4 p-3 rounded-lg border border-[var(--amber)]/30 bg-[var(--amber)]/5">
+            <div className="text-[10px] font-mono uppercase text-[var(--amber)] mb-2 flex items-center gap-1">
+              <Clock size={10} /> Deal-of-the-Night · window (HK time)
+            </div>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {DAY_NAMES.map((d, i) => (
+                <button key={d} data-testid={`combo-day-${d}`} onClick={() => toggleDay(i)}
+                  className={`px-2 py-1 rounded text-[10px] font-mono uppercase border ${
+                    days.includes(i) ? "bg-[var(--amber)]/25 border-[var(--amber)] text-[var(--amber)]"
+                                     : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--muted)]"
+                  }`}>{d}</button>
+              ))}
+              <span className="text-[10px] font-mono text-[var(--muted)] ml-2 self-center">
+                {days.length === 0 ? "(any day)" : `${days.length} day(s)`}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <div className="text-[10px] font-mono uppercase text-[var(--muted)] mb-1">Start</div>
+                <input data-testid="combo-start" type="time" value={startT} onChange={(e) => setStartT(e.target.value)} className={inp} />
+              </div>
+              <div className="flex-1">
+                <div className="text-[10px] font-mono uppercase text-[var(--muted)] mb-1">End</div>
+                <input data-testid="combo-end" type="time" value={endT} onChange={(e) => setEndT(e.target.value)} className={inp} />
+              </div>
+            </div>
+            <div className="text-[10px] font-mono text-[var(--muted)] mt-2">
+              Cross-midnight windows supported (e.g. 22:00 → 03:00)
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           {slots.map((slot, i) => (
@@ -82,6 +130,7 @@ export function ComboEditor({ combo, products, onClose, onSave }) {
             onClick={() => onSave({
               name, slots, product_ids: [],
               discount_type: type, discount_value: value, active,
+              schedule: schedEnabled ? { days, start_time: startT, end_time: endT } : null,
             })}
             disabled={!canSave}
             className="flex-1 btn-neon py-2.5 rounded-lg disabled:opacity-40">

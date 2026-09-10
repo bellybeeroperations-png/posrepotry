@@ -12,13 +12,16 @@ Exclusivity rule (per user, Iter 13):
 """
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from deps import db, _oid, serialize, sl
 from auth import make_current_user_dep
-from models import OrderIn, OrderUpdate, PaymentIn
+from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn
 from routers.kegs import decrement_kegs_for_order
+
+HK_TZ = ZoneInfo("Asia/Hong_Kong")
 
 get_current_user = make_current_user_dep(lambda: db)
 
@@ -142,7 +145,27 @@ def _compute_totals(lines, discount_type, discount_value, service_charge_pct, co
 
 
 async def _active_combos():
-    return await db.combos.find({"active": True}).to_list(200)
+    """Deal-Of-The-Night — only return combos whose schedule window matches
+    the current Hong Kong time (or combos with no schedule, i.e. always-on)."""
+    docs = await db.combos.find({"active": True}).to_list(200)
+    now = datetime.now(HK_TZ)
+    return [c for c in docs if _combo_in_window(c, now)]
+
+
+def _combo_in_window(c: dict, now_hk: datetime) -> bool:
+    sch = c.get("schedule") or {}
+    if not sch:
+        return True
+    days = sch.get("days") or []
+    if days and now_hk.weekday() not in days:
+        return False
+    start, end = sch.get("start_time"), sch.get("end_time")
+    if not start or not end:
+        return True
+    cur = now_hk.strftime("%H:%M")
+    if start <= end:
+        return start <= cur <= end
+    return cur >= start or cur <= end
 
 
 # ---------- Endpoints ----------
@@ -318,3 +341,107 @@ async def bump_line(oid: str, index: int, user: dict = Depends(get_current_user)
     lines[index]["bumped_by"] = user["id"]
     await db.orders.update_one({"_id": _oid(oid)}, {"$set": {"lines": lines}})
     return {"ok": True, "bumped_at": lines[index]["bumped_at"]}
+
+
+# ---------- Auto-Close Tabs (manager only) ----------
+@router.post("/orders/auto-close")
+async def auto_close_tabs(body: AutoCloseIn, user: dict = Depends(get_current_user)):
+    """Batch-settle every open tab at last call. Used at 03:00 HK / closing time.
+    Manager/admin only. Records payment.method=body.method + note; frees tables."""
+    if user["role"] not in ("admin", "manager"):
+        raise HTTPException(403, "Manager override required")
+    orders = await db.orders.find({"status": "open"}).to_list(1000)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    closed = 0
+    revenue = 0.0
+    for o in orders:
+        payment = {
+            "method": body.method,
+            "amount": o.get("total", 0),
+            "tip": 0.0,
+            "splits": [],
+            "change": 0,
+            "paid_at": now_iso,
+            "cashier_id": user["id"],
+            "auto_closed": True,
+            "note": body.note,
+        }
+        await db.orders.update_one(
+            {"_id": o["_id"]},
+            {"$set": {"status": "paid", "payment": payment, "closed_at": now_iso}},
+        )
+        if o.get("table_id"):
+            await db.tables.update_one(
+                {"_id": _oid(o["table_id"])},
+                {"$set": {"status": "dirty", "current_order_id": None}},
+            )
+        try:
+            await decrement_kegs_for_order(o)
+        except Exception:
+            pass
+        closed += 1
+        revenue += o.get("total", 0)
+    return {"closed": closed, "revenue": round(revenue, 2), "method": body.method}
+
+
+# ---------- Split / Merge seats ----------
+@router.post("/orders/{oid}/move-line")
+async def move_line(oid: str, body: MoveLineIn, user: dict = Depends(get_current_user)):
+    """Move a line to another seat (same order) or to another order entirely."""
+    src = await db.orders.find_one({"_id": _oid(oid)})
+    if not src:
+        raise HTTPException(404, "Source order not found")
+    lines = src.get("lines", [])
+    if body.line_index < 0 or body.line_index >= len(lines):
+        raise HTTPException(400, "Bad line index")
+
+    combos = await _active_combos()
+
+    if body.target_order_id and body.target_order_id != oid:
+        tgt = await db.orders.find_one({"_id": _oid(body.target_order_id)})
+        if not tgt:
+            raise HTTPException(404, "Target order not found")
+        moved = lines.pop(body.line_index)
+        if body.target_seat is not None:
+            moved["seat"] = int(body.target_seat)
+        tgt_lines = list(tgt.get("lines", [])) + [moved]
+        src_totals = _compute_totals(lines, src.get("discount_type", "none"), src.get("discount_value", 0), src.get("service_charge_pct", 10), combos)
+        tgt_totals = _compute_totals(tgt_lines, tgt.get("discount_type", "none"), tgt.get("discount_value", 0), tgt.get("service_charge_pct", 10), combos)
+        await db.orders.update_one({"_id": src["_id"]}, {"$set": {"lines": lines, **src_totals}})
+        await db.orders.update_one({"_id": tgt["_id"]}, {"$set": {"lines": tgt_lines, **tgt_totals}})
+        return {"ok": True, "moved_to": str(tgt["_id"])}
+
+    # Same-order reseat
+    if body.target_seat is None:
+        raise HTTPException(400, "target_seat required for same-order move")
+    lines[body.line_index]["seat"] = int(body.target_seat)
+    await db.orders.update_one({"_id": src["_id"]}, {"$set": {"lines": lines}})
+    return {"ok": True, "seat": body.target_seat}
+
+
+@router.post("/orders/merge")
+async def merge_orders(body: MergeOrdersIn, user: dict = Depends(get_current_user)):
+    """Merge source tab into target tab. Source order voided, source table freed."""
+    if body.source_id == body.target_id:
+        raise HTTPException(400, "Source and target must differ")
+    src = await db.orders.find_one({"_id": _oid(body.source_id)})
+    tgt = await db.orders.find_one({"_id": _oid(body.target_id)})
+    if not src or not tgt:
+        raise HTTPException(404, "Order not found")
+    if src.get("status") != "open" or tgt.get("status") != "open":
+        raise HTTPException(400, "Both orders must be open")
+    combos = await _active_combos()
+    merged_lines = list(tgt.get("lines", [])) + list(src.get("lines", []))
+    totals = _compute_totals(merged_lines, tgt.get("discount_type", "none"), tgt.get("discount_value", 0), tgt.get("service_charge_pct", 10), combos)
+    await db.orders.update_one({"_id": tgt["_id"]}, {"$set": {"lines": merged_lines, **totals}})
+    await db.orders.update_one(
+        {"_id": src["_id"]},
+        {"$set": {"status": "voided", "voided_reason": "merged", "merged_into": body.target_id,
+                  "closed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if src.get("table_id"):
+        await db.tables.update_one(
+            {"_id": _oid(src["table_id"])},
+            {"$set": {"status": "available", "current_order_id": None}},
+        )
+    return {"ok": True, "merged_into": body.target_id, "line_count": len(merged_lines), "total": totals["total"]}

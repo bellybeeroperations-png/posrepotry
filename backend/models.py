@@ -116,6 +116,7 @@ class OrderLineIn(BaseModel):
     held: bool = False
     notes: Optional[str] = ""
     hh_pct: float = 0.0  # non-zero when the register applied happy-hour pricing
+    seat: int = 1  # which seat # this line belongs to (for split-by-seat + move)
 
 
 class OrderIn(BaseModel):
@@ -185,6 +186,13 @@ class ComboSlot(BaseModel):
     product_ids: List[str] = []
 
 
+class ComboSchedule(BaseModel):
+    """Optional Deal-of-the-Night window. If unset the combo is always active."""
+    days: List[int] = []  # 0=Mon .. 6=Sun; empty => any day
+    start_time: Optional[str] = None  # "HH:MM" HK time
+    end_time: Optional[str] = None    # supports cross-midnight windows
+
+
 class ComboIn(BaseModel):
     name: str
     product_ids: List[str] = []  # legacy — flat list still supported
@@ -192,6 +200,25 @@ class ComboIn(BaseModel):
     discount_type: Literal["percent", "cash"] = "percent"
     discount_value: float = 10.0
     active: bool = True
+    schedule: Optional[ComboSchedule] = None  # Deal-Of-The-Night rotator
+
+
+# -------- Manager-only ops --------
+class AutoCloseIn(BaseModel):
+    method: Literal["cash", "card", "octopus", "wallet",
+                    "fps_qr", "alipayhk", "wechatpay_hk", "payme", "unionpay"] = "card"
+    note: Optional[str] = "Auto-closed at last call"
+
+
+class MoveLineIn(BaseModel):
+    line_index: int
+    target_order_id: Optional[str] = None  # None => same order, just reseat
+    target_seat: Optional[int] = None      # None => keep current seat
+
+
+class MergeOrdersIn(BaseModel):
+    source_id: str
+    target_id: str
 
 
 # -------- PIN Verify --------

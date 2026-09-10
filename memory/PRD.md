@@ -61,6 +61,16 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v10 · Feb 2026 — Iter 14)
+- **Deal-Of-The-Night Rotator**: combos now carry an optional `schedule: {days, start_time, end_time}` (HK time, cross-midnight aware). `_active_combos` filters by the current window so a scheduled combo only auto-applies inside its slot. ComboEditor exposes a "Scheduled ↔ Always-on" toggle plus day chips and HH:MM inputs.
+- **Auto-Close Tabs**: `POST /api/orders/auto-close` — manager/admin only. One click batch-settles every open tab, records `payment.method` (default card) + `note`, frees tables to dirty, decrements kegs. Floorplan header ships a red `Last Call · Auto-Close` button that confirms first.
+- **Quick Bar Mode**: new `/bar` route + nav pill. Giant drink tiles show HH-discounted pricing with a `-X%` neon badge. One tap adds to a running tab; **Send & Pay Cash / Card** creates the order → auto-fires (so it lands on KDS instantly) → pays → shows the receipt modal.
+- **Split & Merge Seats**:
+  - Every `OrderLineIn` gains a `seat` field. CartTicket line rows show a `S1/S2…` chip that cycles through the party's guests (`data-testid=line-seat-<i>`).
+  - `POST /api/orders/{oid}/move-line` moves a line to another seat *or* another order; totals recompute with the exclusivity engine on both sides.
+  - `POST /api/orders/merge` (source→target) appends lines into target, voids source, frees the source table. Floorplan `TableActionModal` has `Merge Into Another Tab…`.
+- **Bug fix (iter14→iter16 retest)**: TicketLines updaters (`qtyChange`, `toggleHold`, `cycleSeat`) rewritten with immutable `.map()` so React StrictMode's double-invoke no longer doubles the mutation. Verified guests=4 seat cycle S1→S2→S3→S4→S1, qty+ increments by exactly 1 per click, hold toggles cleanly.
+
 ## What's Implemented (v9 · Feb 2026 — Iter 13)
 - **Orders router extracted**: all `/api/orders*` endpoints (list, get, create, patch, fire, pay, void, bump) moved into `/app/backend/routers/orders.py`. The exclusivity totals engine lives beside them. `server.py` is now ~530 lines.
 - **Promo / Combo / Discount Mutual Exclusivity**: a product that already receives one promotion cannot receive another. Precedence HH → Combo → order-level discount. Backend `_compute_totals` returns `hh_locked_product_ids` + `combo_locked_product_ids`; frontend `Register.jsx` mirrors the same math and paints per-line "HH -X%" or "COMBO · <name>" lock badges plus an exclusivity note so staff see why a discount button is inert.
