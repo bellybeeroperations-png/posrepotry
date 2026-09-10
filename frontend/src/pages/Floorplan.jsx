@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
 import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, DollarSign, AlertCircle, Radio, Trophy, Target } from "lucide-react";
+import { ReservationModal, TableActionModal } from "@/components/pos/Reservations";
 
 const STATUS_LABELS = {
   available: "Available",
@@ -27,6 +28,8 @@ export default function Floorplan() {
   const [drag, setDrag] = useState(null);
   const [activeHH, setActiveHH] = useState([]);
   const [now, setNow] = useState(new Date());
+  const [selTable, setSelTable] = useState(null);
+  const [reserveTable, setReserveTable] = useState(null);
   const nav = useNavigate();
 
   const load = async () => {
@@ -126,8 +129,24 @@ export default function Floorplan() {
 
   const openTable = (t) => {
     if (editMode) return;
+    setSelTable(t);
+  };
+
+  const goToOrder = (t) => {
+    setSelTable(null);
     if (t.current_order_id) nav(`/register?order=${t.current_order_id}&table=${t.id}`);
     else nav(`/register?table=${t.id}&area=${activeArea}`);
+  };
+
+  const cancelReservation = async (t) => {
+    if (!confirm(`Cancel reservation for ${t.reservation?.guest_name}?`)) return;
+    try {
+      await api.delete(`/reservations/${t.reservation.id}`);
+      toast.success("Reservation cancelled");
+      setSelTable(null);
+      const r = await api.get("/tables", { params: { area_id: activeArea } });
+      setTables(r.data);
+    } catch { toast.error("Failed"); }
   };
 
   return (
@@ -229,6 +248,12 @@ export default function Floorplan() {
                   {fmtHKD(t.current_order.total)}
                 </div>
               )}
+              {t.reservation && t.status === "reserved" && (
+                <div className="text-[9px] font-mono opacity-80 leading-tight text-center px-1">
+                  <div className="truncate max-w-[80px]">{t.reservation.guest_name}</div>
+                  <ResCountdown iso={t.reservation.reserved_for} />
+                </div>
+              )}
               {editMode && (
                 <button
                   data-testid={`btn-del-${t.name}`}
@@ -279,8 +304,38 @@ export default function Floorplan() {
           </SidebarCard>
         </aside>
       </div>
+
+      {selTable && (
+        <TableActionModal
+          table={selTable}
+          onClose={() => setSelTable(null)}
+          onOpen={() => goToOrder(selTable)}
+          onReserve={() => { setReserveTable(selTable); setSelTable(null); }}
+          onCancel={() => cancelReservation(selTable)}
+        />
+      )}
+      {reserveTable && (
+        <ReservationModal
+          table={reserveTable}
+          onClose={() => setReserveTable(null)}
+          onSaved={async () => {
+            setReserveTable(null);
+            const r = await api.get("/tables", { params: { area_id: activeArea } });
+            setTables(r.data);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function ResCountdown({ iso }) {
+  const [, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick(x => x + 1), 30000); return () => clearInterval(t); }, []);
+  const ms = new Date(iso).getTime() - Date.now();
+  const mins = Math.round(ms / 60000);
+  if (mins > 0) return <div className="font-mono">in {mins > 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`}</div>;
+  return <div className="font-mono text-[var(--rose)]">now · {Math.abs(mins)}m late</div>;
 }
 
 function Kpi({ label, value, icon: Icon, testid, color = "#00F2FE" }) {

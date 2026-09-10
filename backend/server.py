@@ -23,7 +23,7 @@ from auth import (
 )
 from models import (
     LoginIn, PinLoginIn, CategoryIn, ProductIn, AreaIn, TableIn, TablePosIn,
-    MemberIn, HappyHourIn, OrderIn, OrderUpdate, PaymentIn, StaffIn,
+    MemberIn, HappyHourIn, OrderIn, OrderUpdate, PaymentIn, StaffIn, ReservationIn,
 )
 from seed import seed_all
 
@@ -114,7 +114,7 @@ async def create_area(body: AreaIn, user: dict = Depends(get_current_user)):
 async def list_tables(area_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"area_id": area_id} if area_id else {}
     tables = sl(await db.tables.find(q).to_list(500))
-    # attach current order summary
+    # attach current order + reservation summary
     for t in tables:
         if t.get("current_order_id"):
             o = await db.orders.find_one({"_id": _oid(t["current_order_id"])})
@@ -124,6 +124,16 @@ async def list_tables(area_id: Optional[str] = None, user: dict = Depends(get_cu
                     "total": o.get("total", 0),
                     "guests": o.get("guests", 1),
                     "opened_at": o.get("opened_at"),
+                }
+        if t.get("reservation_id"):
+            r = await db.reservations.find_one({"_id": _oid(t["reservation_id"])})
+            if r:
+                t["reservation"] = {
+                    "id": str(r["_id"]),
+                    "guest_name": r["guest_name"],
+                    "phone": r["phone"],
+                    "party_size": r["party_size"],
+                    "reserved_for": r["reserved_for"],
                 }
     return tables
 
@@ -565,9 +575,180 @@ async def reports_summary(user: dict = Depends(get_current_user)):
     }
 
 
+# ===================== KDS =====================
+@api.get("/kds")
+async def kds(station: str = "all", user: dict = Depends(get_current_user)):
+    """Return fired-but-not-bumped lines. station: kitchen|bar|all"""
+    orders = await db.orders.find({"status": "open"}).to_list(500)
+    prods = {str(p["_id"]): p for p in await db.products.find().to_list(2000)}
+    tables = {str(t["_id"]): t for t in await db.tables.find().to_list(500)}
+    tickets = []
+    for o in orders:
+        for i, l in enumerate(o.get("lines", [])):
+            if l.get("held") or not l.get("fired_at") or l.get("bumped_at"):
+                continue
+            p = prods.get(l.get("product_id", ""))
+            kind = (p or {}).get("kind") or ("drink" if l.get("course") == "drink" else "food")
+            if station == "kitchen" and kind != "food":
+                continue
+            if station == "bar" and kind != "drink":
+                continue
+            t = tables.get(o.get("table_id") or "")
+            tickets.append({
+                "order_id": str(o["_id"]),
+                "line_index": i,
+                "name": l["name"],
+                "qty": l["qty"],
+                "notes": l.get("notes", ""),
+                "modifiers": l.get("modifiers", []),
+                "course": l.get("course"),
+                "kind": kind,
+                "table": t["name"] if t else o.get("order_type", "").upper(),
+                "order_type": o.get("order_type"),
+                "fired_at": l.get("fired_at"),
+            })
+    tickets.sort(key=lambda x: x["fired_at"] or "")
+    return tickets
+
+
+@api.post("/orders/{oid}/bump/{index}")
+async def bump_line(oid: str, index: int, user: dict = Depends(get_current_user)):
+    o = await db.orders.find_one({"_id": _oid(oid)})
+    if not o:
+        raise HTTPException(404, "Not found")
+    lines = o.get("lines", [])
+    if index < 0 or index >= len(lines):
+        raise HTTPException(400, "Bad line index")
+    lines[index]["bumped_at"] = datetime.now(timezone.utc).isoformat()
+    lines[index]["bumped_by"] = user["id"]
+    await db.orders.update_one({"_id": _oid(oid)}, {"$set": {"lines": lines}})
+    return {"ok": True, "bumped_at": lines[index]["bumped_at"]}
+
+
+# ===================== SHIFTS =====================
+async def _shift_stats(shift: dict) -> dict:
+    q = {"status": "paid", "server_id": shift["user_id"],
+         "closed_at": {"$gte": shift["clock_in"]}}
+    if shift.get("clock_out"):
+        q["closed_at"]["$lte"] = shift["clock_out"]
+    orders = await db.orders.find(q).to_list(5000)
+    revenue = sum(o.get("total", 0) for o in orders)
+    tips = sum(((o.get("payment") or {}).get("tip") or 0) for o in orders)
+    covers = sum(o.get("guests", 0) or 0 for o in orders)
+    by_pay: dict = {}
+    for o in orders:
+        m = (o.get("payment") or {}).get("method", "cash")
+        by_pay[m] = by_pay.get(m, 0) + o.get("total", 0)
+    return {
+        "shift": serialize(shift),
+        "orders": len(orders),
+        "revenue": round(revenue, 2),
+        "tips": round(tips, 2),
+        "covers": covers,
+        "avg_ticket": round(revenue / len(orders), 2) if orders else 0,
+        "by_payment": [{"method": k, "amount": round(v, 2)} for k, v in by_pay.items()],
+    }
+
+
+@api.post("/shifts/clock-in")
+async def clock_in(user: dict = Depends(get_current_user)):
+    existing = await db.shifts.find_one({"user_id": user["id"], "clock_out": None})
+    if existing:
+        return serialize(existing)
+    doc = {
+        "user_id": user["id"], "user_name": user["name"], "role": user["role"],
+        "clock_in": datetime.now(timezone.utc).isoformat(),
+        "clock_out": None,
+    }
+    r = await db.shifts.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+@api.post("/shifts/clock-out")
+async def clock_out(user: dict = Depends(get_current_user)):
+    shift = await db.shifts.find_one({"user_id": user["id"], "clock_out": None})
+    if not shift:
+        raise HTTPException(400, "No open shift")
+    await db.shifts.update_one(
+        {"_id": shift["_id"]},
+        {"$set": {"clock_out": datetime.now(timezone.utc).isoformat()}},
+    )
+    shift = await db.shifts.find_one({"_id": shift["_id"]})
+    return await _shift_stats(shift)
+
+
+@api.get("/shifts/current")
+async def shift_current(user: dict = Depends(get_current_user)):
+    shift = await db.shifts.find_one({"user_id": user["id"], "clock_out": None})
+    if not shift:
+        return {"open": False}
+    stats = await _shift_stats(shift)
+    return {"open": True, **stats}
+
+
+@api.get("/shifts")
+async def list_shifts(user: dict = Depends(get_current_user)):
+    q = {} if user["role"] in ("admin", "manager") else {"user_id": user["id"]}
+    shifts = await db.shifts.find(q).sort("clock_in", -1).to_list(50)
+    return [await _shift_stats(s) for s in shifts]
+
+
+# ===================== RESERVATIONS =====================
+@api.get("/reservations")
+async def list_reservations(user: dict = Depends(get_current_user)):
+    q = {"status": "pending"}
+    return sl(await db.reservations.find(q).sort("reserved_for", 1).to_list(200))
+
+
+@api.post("/reservations")
+async def create_reservation(body: ReservationIn, user: dict = Depends(get_current_user)):
+    t = await db.tables.find_one({"_id": _oid(body.table_id)})
+    if not t:
+        raise HTTPException(404, "Table not found")
+    if t.get("status") == "occupied":
+        raise HTTPException(400, "Table currently occupied")
+    doc = body.model_dump()
+    doc["status"] = "pending"
+    doc["created_by"] = user["id"]
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    r = await db.reservations.insert_one(doc)
+    await db.tables.update_one(
+        {"_id": _oid(body.table_id)},
+        {"$set": {"status": "reserved", "reservation_id": str(r.inserted_id)}},
+    )
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+@api.post("/reservations/{rid}/seat")
+async def seat_reservation(rid: str, user: dict = Depends(get_current_user)):
+    r = await db.reservations.find_one({"_id": _oid(rid)})
+    if not r:
+        raise HTTPException(404, "Not found")
+    await db.reservations.update_one({"_id": _oid(rid)}, {"$set": {"status": "seated"}})
+    await db.tables.update_one(
+        {"_id": _oid(r["table_id"])},
+        {"$set": {"status": "available", "reservation_id": None}},
+    )
+    return {"ok": True}
+
+
+@api.delete("/reservations/{rid}")
+async def cancel_reservation(rid: str, user: dict = Depends(get_current_user)):
+    r = await db.reservations.find_one({"_id": _oid(rid)})
+    if not r:
+        raise HTTPException(404, "Not found")
+    await db.reservations.update_one({"_id": _oid(rid)}, {"$set": {"status": "cancelled"}})
+    await db.tables.update_one(
+        {"_id": _oid(r["table_id"])},
+        {"$set": {"status": "available", "reservation_id": None}},
+    )
+    return {"ok": True}
+
+
 # ===================== BOOTSTRAP =====================
 app.include_router(api)
-
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

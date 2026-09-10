@@ -16,6 +16,13 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - DB: MongoDB `hkbar_pos` — collections `users`, `areas`, `tables`, `categories`, `products`, `orders`, `members`, `happy_hours`
 - Theme: Hong Kong neon cyberpunk dark mode (`#0B0E14` bg, `#00F2FE` cyan, `#FFB800` amber, distinct table-state colors)
 
+## What's Implemented (v3 · Feb 2026 iteration)
+- **Kitchen Display System (/kds)**: fired-but-not-bumped items grouped with station filter (All/Kitchen/Bar), age-coloured cards (green <5m, amber <10m, red >10m pulsing), tap-to-bump with instant removal, KPI cards for total/food/drink/late
+- **Shift Reports (/shift)**: clock-in / clock-out per staff, live shift KPIs (revenue, orders, covers, tips, avg ticket, payment mix), printable X-report mid-shift and Z-report on close (opens a formatted receipt-style popup for the printer), history of past shifts with per-row print button
+- **Reservations**: click any table → TableActionModal (Open Order / Reserve / Cancel Reservation depending on state) → ReservationModal collects guest name, phone, party size, reserved-for datetime, notes; table becomes reserved-purple with the guest name and a live countdown (in Xm / now / X m late)
+- **Print / Email Receipts**: after every payment a printable Receipt modal opens (subtotal, discount, service, total, payment breakdown including per-split rows, tip, change). Receipt can also be opened for any historic order from the CRM member profile. Print opens a windowed thermal-style receipt; email is MOCKED (toast).
+- All four features tested end-to-end: iteration_3.json backend + frontend 100% pass
+
 ## What's Implemented (v2 · Feb 2026 iteration)
 - **Menu Matrix Editor**: rich Product editor with variant + modifier grids (add/edit/delete rows, price deltas), Category editor with color swatches, Happy Hour editor with time inputs, day toggles, and category multi-select
 - **Live Happy Hour**: `/api/happy-hours/active` returns rules whose HK weekday + time window matches now (cross-midnight aware). Register shows a live HH banner and applies discounted prices with -X% badge + strikethrough automatically on eligible products. Variant modal also discounts.

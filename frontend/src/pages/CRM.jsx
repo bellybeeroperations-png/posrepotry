@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Search, Crown, TrendingUp } from "lucide-react";
+import { Plus, Search, Crown, TrendingUp, Printer } from "lucide-react";
+import Receipt from "@/components/pos/Receipt";
 
 const TIER_COLOR = { VIP: "#F43F5E", Gold: "#FFB800", Silver: "#94A3B8", Regular: "#26334D" };
 
@@ -9,6 +10,7 @@ export default function CRM() {
   const [members, setMembers] = useState([]);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
+  const [receipt, setReceipt] = useState(null);
 
   const load = async (query = "") => {
     const r = await api.get("/members", { params: query ? { q: query } : {} });
@@ -126,12 +128,22 @@ export default function CRM() {
                 </div>
                 <div className="space-y-1 max-h-64 overflow-y-auto">
                   {sel.orders.map((o) => (
-                    <div key={o.id} className="p-2 rounded bg-[var(--surface-2)] border border-[var(--border)] flex justify-between text-xs">
+                    <div key={o.id} data-testid={`crm-order-${o.id}`} className="p-2 rounded bg-[var(--surface-2)] border border-[var(--border)] flex justify-between text-xs items-center">
                       <div>
                         <div className="font-mono text-[10px] text-[var(--muted)]">#{o.id.slice(-6)}</div>
                         <div>{o.lines?.length || 0} items · {o.order_type}</div>
                       </div>
-                      <div className="font-mono font-bold text-[var(--amber)]">{fmtHKD(o.total)}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-mono font-bold text-[var(--amber)]">{fmtHKD(o.total)}</div>
+                        <button
+                          data-testid={`crm-receipt-${o.id}`}
+                          onClick={() => setReceipt(o)}
+                          className="w-7 h-7 rounded bg-[var(--surface)] hover:bg-[var(--cyan)]/20 hover:text-[var(--cyan)] flex items-center justify-center"
+                          title="View receipt"
+                        >
+                          <Printer size={12} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {sel.orders.length === 0 && <div className="text-xs text-[var(--muted)]">No orders yet</div>}
@@ -145,6 +157,10 @@ export default function CRM() {
           )}
         </div>
       </div>
+
+      {receipt && (
+        <Receipt order={receipt} memberName={sel?.member?.name} onClose={() => setReceipt(null)} />
+      )}
     </div>
   );
 }

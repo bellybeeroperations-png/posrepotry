@@ -11,6 +11,8 @@ import CRM from "@/pages/CRM";
 import Staff from "@/pages/Staff";
 import Reports from "@/pages/Reports";
 import Events from "@/pages/Events";
+import KDS from "@/pages/KDS";
+import Shift from "@/pages/Shift";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -41,6 +43,8 @@ export default function App() {
           <Route path="/staff" element={<Protected><Staff /></Protected>} />
           <Route path="/reports" element={<Protected><Reports /></Protected>} />
           <Route path="/events" element={<Protected><Events /></Protected>} />
+          <Route path="/kds" element={<Protected><KDS /></Protected>} />
+          <Route path="/shift" element={<Protected><Shift /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

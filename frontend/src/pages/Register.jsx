@@ -6,6 +6,7 @@ import {
   Plus, Minus, Trash2, Percent, DollarSign, Flame, Pause, Play, User,
   ShoppingBag, Truck, UtensilsCrossed, CreditCard, Wallet, Banknote, Coins,
 } from "lucide-react";
+import Receipt from "@/components/pos/Receipt";
 
 const COURSES = ["starter", "main", "dessert", "drink", "side", "other"];
 
@@ -18,6 +19,7 @@ export default function Register() {
   const [order, setOrder] = useState(null);
   const [variantModal, setVariantModal] = useState(null);
   const [payModal, setPayModal] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState(null);
   const [members, setMembers] = useState([]);
   const [memberQ, setMemberQ] = useState("");
   const [activeHH, setActiveHH] = useState([]); // list of active happy hours
@@ -422,14 +424,22 @@ export default function Register() {
           onClose={() => setPayModal(false)}
           onPay={async (payload) => {
             try {
-              await api.post(`/orders/${order.id}/pay`, payload);
+              const res = await api.post(`/orders/${order.id}/pay`, payload);
               toast.success("Payment complete");
               setPayModal(false);
-              nav("/floorplan");
+              setReceiptOrder(res.data);
             } catch (e) {
               toast.error(e?.response?.data?.detail || "Payment failed");
             }
           }}
+        />
+      )}
+
+      {receiptOrder && (
+        <Receipt
+          order={receiptOrder}
+          memberName={order?.member_name}
+          onClose={() => { setReceiptOrder(null); nav("/floorplan"); }}
         />
       )}
     </div>

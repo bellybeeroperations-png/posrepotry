@@ -154,3 +154,13 @@ class StaffIn(BaseModel):
     name: str
     role: Literal["admin", "manager", "bartender", "server", "cashier"]
     pin: str = Field(min_length=4, max_length=6)
+
+
+# -------- Reservations --------
+class ReservationIn(BaseModel):
+    table_id: str
+    guest_name: str
+    phone: str
+    party_size: int = 2
+    reserved_for: str  # ISO datetime
+    notes: Optional[str] = ""
