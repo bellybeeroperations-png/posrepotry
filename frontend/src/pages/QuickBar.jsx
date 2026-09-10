@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
 import { Zap, Send, X, Beer, Plus, Minus, TrendingUp } from "lucide-react";
@@ -42,6 +42,19 @@ export default function QuickBar() {
   const addTile = (p) => {
     const pct = hhFor(p);
     const price = priceOf(p);
+    // If this tile had a heat-map hint, log it as an accepted upsell.
+    const hint = tileHint(p);
+    if (hint) {
+      api.post("/upsell/log", {
+        combo_name: hint.combo,
+        product_id: p.id,
+        product_name: p.name,
+        potential_discount: hint.discount_type === "percent" ? Math.round(subtotal * (hint.discount_value / 100)) : hint.discount_value,
+        source: "quickbar",
+        status: "accepted",
+      }).catch(() => {});
+      qbShownRef.current.delete(`${hint.combo}-${p.id}`);
+    }
     setCart((c) => {
       const idx = c.findIndex((l) => l.product_id === p.id);
       if (idx >= 0) return c.map((l, i) => (i === idx ? { ...l, qty: l.qty + 1 } : l));
@@ -50,7 +63,17 @@ export default function QuickBar() {
   };
   const bump = (i, d) =>
     setCart((c) => c.map((l, idx) => (idx === i ? { ...l, qty: Math.max(0, l.qty + d) } : l)).filter((l) => l.qty > 0));
-  const clear = () => setCart([]);
+  const clear = () => {
+    // Any leftover shown-but-not-accepted becomes a dismissed nudge.
+    for (const meta of qbShownRef.current.values()) {
+      api.post("/upsell/log", { ...meta, status: "dismissed" }).catch(() => {});
+    }
+    qbShownRef.current.clear();
+    setCart([]);
+  };
+
+  // QuickBar shown-nudge tracker
+  const qbShownRef = useRef(new Map());  // key -> meta
 
   const subtotal = useMemo(() => cart.reduce((s, l) => s + l.price * l.qty, 0), [cart]);
   const service = +(subtotal * 0.1).toFixed(2);
@@ -122,6 +145,14 @@ export default function QuickBar() {
       });
       toast.success(`Sent + paid ${fmtHKD(createRes.data.total)}`);
       setReceipt(payRes.data);
+      // 4) Any shown-but-not-accepted nudge is now dismissed
+      const cartPids = new Set(cart.map((l) => l.product_id));
+      for (const [k, meta] of qbShownRef.current.entries()) {
+        if (!cartPids.has(meta.product_id)) {
+          api.post("/upsell/log", { ...meta, status: "dismissed" }).catch(() => {});
+        }
+      }
+      qbShownRef.current.clear();
       setCart([]);
     } catch (e) {
       toast.error(errMsg(e, "Failed"));
@@ -152,6 +183,19 @@ export default function QuickBar() {
             const pct = hhFor(p);
             const price = priceOf(p);
             const hint = tileHint(p);
+            // Log 'shown' for this hint once per session (dedupe via ref)
+            if (hint) {
+              const k = `${hint.combo}-${p.id}`;
+              if (!qbShownRef.current.has(k)) {
+                const meta = {
+                  combo_name: hint.combo, product_id: p.id, product_name: p.name,
+                  potential_discount: hint.discount_type === "percent" ? Math.round(subtotal * (hint.discount_value / 100)) : hint.discount_value,
+                  source: "quickbar",
+                };
+                qbShownRef.current.set(k, meta);
+                api.post("/upsell/log", { ...meta, status: "shown" }).catch(() => {});
+              }
+            }
             return (
               <button
                 key={p.id}

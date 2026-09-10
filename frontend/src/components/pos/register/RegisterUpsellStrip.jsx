@@ -1,6 +1,7 @@
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { TrendingUp, Zap } from "lucide-react";
+import { toast } from "sonner";
 
 /**
  * Live combo heat-map for the Register.
@@ -103,6 +104,22 @@ export default function RegisterUpsellStrip({ order, totals, combos, products, o
     }
   }, [order?.status]);
 
+  // Peak-Rush Auto-Flash — if the top hint sits idle for 90s, flash it + toast
+  const [flashKey, setFlashKey] = useState(null);
+  const topHint = hints[0];
+  const topKey = topHint ? `${topHint.combo}-${topHint.product.id}` : null;
+  useEffect(() => {
+    setFlashKey(null);
+    if (!topHint) return;
+    const t = setTimeout(() => {
+      setFlashKey(topKey);
+      toast(`Push this now: +1 ${topHint.product.name} → ${topHint.combo}`, {
+        description: `Worth ${topHint.discount_type === "percent" ? topHint.discount_value + "%" : fmtHKD(topHint.discount_value)} off — one tap away.`,
+      });
+    }, 90000);
+    return () => clearTimeout(t);
+  }, [topKey]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   const accept = (h) => {
     const key = `${order?.id || "draft"}-${h.combo}-${h.product.id}`;
     pendingRef.current.delete(key);  // no longer eligible for dismiss
@@ -128,15 +145,22 @@ export default function RegisterUpsellStrip({ order, totals, combos, products, o
       <span className="font-mono uppercase tracking-widest text-[var(--cyan)] font-bold flex items-center gap-1">
         <Zap size={11} /> Upsell heat-map · one more tap
       </span>
-      {hints.map((h) => (
+      {hints.map((h) => {
+        const k = `${h.combo}-${h.product.id}`;
+        const flashing = flashKey === k;
+        return (
         <button
-          key={`${h.combo}-${h.product.id}`}
+          key={k}
           data-testid={`upsell-chip-${h.product.name}`}
           onClick={() => accept(h)}
-          className="group px-2 py-1 rounded border border-[var(--cyan)]/40 bg-[var(--surface-2)] hover:border-[var(--cyan)] hover:bg-[var(--cyan)]/10 font-mono flex items-center gap-1.5">
-          <TrendingUp size={11} className="text-[var(--cyan)]" />
+          className={`group px-2 py-1 rounded border font-mono flex items-center gap-1.5 transition ${
+            flashing
+              ? "border-[var(--amber)] bg-[var(--amber)]/20 animate-pulse ring-2 ring-[var(--amber)]"
+              : "border-[var(--cyan)]/40 bg-[var(--surface-2)] hover:border-[var(--cyan)] hover:bg-[var(--cyan)]/10"
+          }`}>
+          <TrendingUp size={11} className={flashing ? "text-[var(--amber)]" : "text-[var(--cyan)]"} />
           <span className="text-white">+1 {h.product.name}</span>
-          <span className="text-[var(--cyan)] font-black">
+          <span className={`font-black ${flashing ? "text-[var(--amber)]" : "text-[var(--cyan)]"}`}>
             → -{h.discount_type === "percent" ? `${h.discount_value}%` : fmtHKD(h.discount_value)}
           </span>
           <span className="text-[10px] text-[var(--muted)]">({h.combo})</span>
@@ -146,7 +170,7 @@ export default function RegisterUpsellStrip({ order, totals, combos, products, o
             </span>
           )}
         </button>
-      ))}
+      );})}
       <span className="ml-auto text-[var(--muted)]">tap a chip to add</span>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
@@ -69,11 +69,36 @@ export default function Floorplan() {
   }, []);
 
   // ---- Combo heat-map: 1-more-away upsell hints per table ----
+  const fpShownRef = useRef(new Map()); // key -> {table_id, order_id, combo_name, product_id, product_name, potential_discount}
   useEffect(() => {
     const fetchHints = () => api.get("/floorplan/combo-hints").then((r) => {
       const map = {};
-      (r.data || []).forEach((row) => { map[row.table_id] = row.hints; });
+      const seenKeys = new Set();
+      (r.data || []).forEach((row) => {
+        map[row.table_id] = row.hints;
+        row.hints.forEach((h) => {
+          const k = `${row.order_id}-${h.combo_name}-${h.product_id}`;
+          seenKeys.add(k);
+          if (!fpShownRef.current.has(k)) {
+            const meta = {
+              order_id: row.order_id, table_id: row.table_id,
+              combo_name: h.combo_name, product_id: h.product_id,
+              product_name: h.product_name, potential_discount: h.discount,
+              source: "floorplan",
+            };
+            fpShownRef.current.set(k, meta);
+            api.post("/upsell/log", { ...meta, status: "shown" }).catch(() => {});
+          }
+        });
+      });
       setComboHints(map);
+      // Anything previously shown that's no longer in the feed = dismissed
+      for (const [k, meta] of [...fpShownRef.current.entries()]) {
+        if (!seenKeys.has(k)) {
+          api.post("/upsell/log", { ...meta, status: "dismissed" }).catch(() => {});
+          fpShownRef.current.delete(k);
+        }
+      }
     }).catch(() => {});
     fetchHints();
     const t = setInterval(fetchHints, 8000);

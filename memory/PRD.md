@@ -61,6 +61,12 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v16 · Feb 2026 — Iter 23)
+- **Peak-Rush Auto-Flash**: `RegisterUpsellStrip` starts a 90s timer whenever the top hint appears. If not accepted, the top chip flashes amber (ring + pulse animation) and a sonner toast fires: `Push this now: +1 <Product> → <Combo>`. Timer resets whenever the top hint changes or is accepted.
+- **Nudges on QuickBar tiles**: Every tile with a `+1 → -X%` hint POSTs `shown` (deduped via ref map). Tapping the tile POSTs `accepted`. Clearing the tab or completing Send & Pay flushes remaining un-accepted hints as `dismissed`.
+- **Nudges on Floorplan glow**: The 8s combo-hints poll now diffs against a `fpShownRef` — new hints POST `shown` with `source: "floorplan"`, hints that disappear from the feed POST `dismissed`. Every table-glow ping now feeds the leaderboard.
+- **Leaderboard covers 3 touchpoints**: `register`, `quickbar`, `floorplan` (stored in `source` field; leaderboard aggregates all sources per server).
+
 ## What's Implemented (v15 · Feb 2026 — Iter 22)
 - **Dismiss Tracking**: `RegisterUpsellStrip` now remembers every shown nudge in a `pendingRef` map (keyed by `order|combo|product`). On accept the entry is deleted (no dismiss). When the order transitions to `paid` or `voided`, every remaining pending nudge is flushed as `POST /api/upsell/log {status: "dismissed"}`. Leaderboard conversion % now reflects reality.
 
