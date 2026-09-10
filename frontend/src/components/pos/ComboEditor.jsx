@@ -25,7 +25,7 @@ export function ComboEditor({ combo, products, onClose, onSave }) {
   const updSlot = (i, k, v) => setSlots(slots.map((s, idx) => idx === i ? { ...s, [k]: v } : s));
   const toggleProd = (i, pid) => updSlot(i, "product_ids",
     slots[i].product_ids.includes(pid) ? slots[i].product_ids.filter(x => x !== pid) : [...slots[i].product_ids, pid]);
-  const addSlot = () => slots.length < 4 && setSlots([...slots, { operator: "or", min_qty: 1, max_qty: 1, product_ids: [] }]);
+  const addSlot = () => slots.length < 4 && setSlots([...slots, { _k: `s-${Date.now()}-${Math.random()}`, operator: "or", min_qty: 1, max_qty: 1, product_ids: [] }]);
   const delSlot = (i) => setSlots(slots.filter((_, idx) => idx !== i));
   const toggleDay = (d) => setDays(days.includes(d) ? days.filter(x => x !== d) : [...days, d].sort());
 
@@ -109,7 +109,7 @@ export function ComboEditor({ combo, products, onClose, onSave }) {
         <div className="space-y-4">
           {slots.map((slot, i) => (
             <SlotEditor
-              key={i} idx={i} slot={slot} products={products}
+              key={slot._k ?? `slot-${i}`} idx={i} slot={slot} products={products}
               onUpdate={(k, v) => updSlot(i, k, v)}
               onToggleProd={(pid) => toggleProd(i, pid)}
               onDelete={slots.length > 1 ? () => delSlot(i) : null}

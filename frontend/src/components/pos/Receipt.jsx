@@ -38,7 +38,7 @@ export default function Receipt({ order, memberName, onClose }) {
           )}
           <div className="border-t border-dashed border-neutral-400 my-3" />
           {(order?.lines || []).map((l, i) => (
-            <div key={i} className="flex justify-between text-[12px]">
+            <div key={`${l.product_id || "x"}-${l.variant || ""}-${i}`} className="flex justify-between text-[12px]">
               <div className="flex-1">
                 {l.qty}× {l.name}
                 {l.modifiers?.length > 0 && (
@@ -62,7 +62,7 @@ export default function Receipt({ order, memberName, onClose }) {
               <div className="border-t border-dashed border-neutral-400 my-3" />
               <Row label={`Paid (${order.payment.method})`} value={fmtHKD(order.payment.amount || 0)} />
               {order.payment.method === "split" && (order.payment.splits || []).map((s, i) => (
-                <Row key={i} label={`  · ${s.method}`} value={fmtHKD(s.amount)} sub />
+                <Row key={`${s.method}-${s.amount}-${i}`} label={`  · ${s.method}`} value={fmtHKD(s.amount)} sub />
               ))}
               {order.payment.tip > 0 && <Row label="Tip" value={fmtHKD(order.payment.tip)} />}
               {order.payment.change > 0 && <Row label="Change" value={fmtHKD(order.payment.change)} />}

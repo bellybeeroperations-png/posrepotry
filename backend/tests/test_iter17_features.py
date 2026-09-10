@@ -2,10 +2,15 @@
 import os
 import pytest
 import requests
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://hk-bar-pos-pro.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "polymuze111@gmail.com"
-ADMIN_PASSWORD = "admin123"
+# Test credentials come from env; never commit real creds to source.
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "polymuze111@gmail.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
 
 
 @pytest.fixture(scope="module")

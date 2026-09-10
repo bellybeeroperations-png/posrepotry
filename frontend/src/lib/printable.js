@@ -6,7 +6,10 @@ export function openPrintableWindow(html, name = "print") {
   const url = URL.createObjectURL(blob);
   const w = window.open(url, name, "width=420,height=700");
   if (w) {
-    const doPrint = () => setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 400);
+    const doPrint = () => setTimeout(() => {
+      try { w.focus(); w.print(); }
+      catch (err) { console.warn("[printable] print blocked:", err); }
+    }, 400);
     // Load event fires for blob URLs
     w.addEventListener("load", doPrint, { once: true });
     // Fallback in case load already fired before we listened

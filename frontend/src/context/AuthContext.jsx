@@ -14,7 +14,8 @@ export function AuthProvider({ children }) {
         if (!t) return setLoading(false);
         const { data } = await api.get("/auth/me");
         setUser(data);
-      } catch {
+      } catch (err) {
+        console.error("[auth/me] refresh failed, clearing token:", err);
         localStorage.removeItem("hkbar_token");
       } finally {
         setLoading(false);
@@ -39,7 +40,10 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await api.post("/auth/logout");
-    } catch {}
+    } catch (err) {
+      // Non-blocking — server may be offline; we still clear local state below.
+      console.warn("[auth/logout] server call failed:", err);
+    }
     localStorage.removeItem("hkbar_token");
     setUser(null);
   };

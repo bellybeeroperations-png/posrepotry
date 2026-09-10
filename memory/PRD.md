@@ -61,6 +61,14 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
+## What's Implemented (v13 · Feb 2026 — Iter 20 · Code Review)
+- **Security**: moved test admin credentials out of `tests/test_iter17_features.py` into env vars (`TEST_ADMIN_EMAIL`, `TEST_ADMIN_PASSWORD`) with sane defaults for local dev.
+- **Error visibility**: replaced 3 silent empty-catch blocks with `console.error/warn` — `AuthContext` /me refresh, `AuthContext` logout, `printable.js` print-blocked branch.
+- **State correctness**: swapped React `key={i}` index-as-key anti-patterns for stable keys in `Receipt.jsx` (line items + split rows), `editors.jsx` (variant/modifier rows + HH day chips), `PaymentModal.jsx` (split rows), `ComboEditor.jsx` (slots).
+- **Skipped as false positives**: 37 flagged `is <literal>` cases were all `is None` / `is True` / `is False` — correct Python for singleton comparison; grep for `is <int>` returned 0 hits, so no changes were needed.
+- **Deferred to a dedicated refactor iteration**: component splits for `Floorplan.jsx` / `Register.jsx` / `ComboEditor.jsx` / `CartTicket.jsx` (large surface), complexity refactors of `_compute_totals`, `combo_hints`, `reports_summary`, `prep_view` (all functionally correct; splitting mid-flight risks regressions before a full test pass).
+- **Test coverage**: 12/12 combined pytest still green after all string-key changes.
+
 ## What's Implemented (v12 · Feb 2026 — Iter 19)
 - **Combo Heat-Map on QuickBar**: each drink tile shows a cyan "+1 → -X%" badge when tapping it would complete an active combo. Pure client-side calc using the cached `/api/combos` list, no extra endpoint.
 - **Delivery Fee Split**: `/api/reports/summary` now returns `net_revenue`, `delivery_fees`, `delivery_gross`, `by_delivery_platform` (gross/fee/net per platform). Reports page shows a "Net Revenue" KPI and a per-platform breakdown card (foodpanda/deliveroo/keeta tinted rows).

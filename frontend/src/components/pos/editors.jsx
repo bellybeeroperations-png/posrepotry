@@ -94,7 +94,7 @@ function MatrixGrid({ label, subLabel, rows, setRows, testId }) {
         </div>
         {rows.length === 0 && <div className="px-3 py-4 text-xs text-[var(--muted)]">No {label.toLowerCase()} — tap "Add"</div>}
         {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-[1fr_180px_40px] gap-2 px-3 py-2 items-center">
+          <div key={r._k ?? `row-${i}`} className="grid grid-cols-[1fr_180px_40px] gap-2 px-3 py-2 items-center">
             <input data-testid={`${testId}-name-${i}`} value={r.name} onChange={(e) => upd(i, "name", e.target.value)} placeholder="e.g. Pint" className="bg-[var(--surface)] border border-[var(--border)] rounded px-2 py-1 text-sm" />
             <input data-testid={`${testId}-delta-${i}`} type="number" step="0.01" value={r.price_delta} onChange={(e) => upd(i, "price_delta", e.target.value)} className="bg-[var(--surface)] border border-[var(--border)] rounded px-2 py-1 text-sm font-mono" />
             <button onClick={() => del(i)} className="text-[var(--rose)]"><Trash2 size={14} /></button>
@@ -170,7 +170,7 @@ export function HappyHourEditor({ hh, categories, onClose, onSave }) {
       <Field label="Days">
         <div className="flex gap-2">
           {DAY_NAMES.map((d, i) => (
-            <button key={i} onClick={() => toggleDay(i)} data-testid={`hh-day-${d}`}
+            <button key={d} onClick={() => toggleDay(i)} data-testid={`hh-day-${d}`}
               className={`flex-1 py-2 rounded-md border text-xs font-mono uppercase ${days.includes(i) ? "bg-[var(--amber)]/20 border-[var(--amber)] text-[var(--amber)]" : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--muted)]"}`}>
               {d}
             </button>

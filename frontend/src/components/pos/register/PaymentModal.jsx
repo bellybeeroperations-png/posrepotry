@@ -221,7 +221,7 @@ function SplitMode({ guests, splits, setSplits, splitMode, applySplitMode, split
       </div>
       <div className="space-y-2 max-h-64 overflow-y-auto">
         {splits.map((s, i) => (
-          <div key={i} className="grid grid-cols-[80px_1fr_100px_36px] gap-2 items-center">
+          <div key={s._k ?? `split-${i}-${s.method}`} className="grid grid-cols-[80px_1fr_100px_36px] gap-2 items-center">
             <span className="text-xs font-mono text-[var(--muted)]">{s.label || `Split ${i + 1}`}</span>
             <select data-testid={`split-method-${i}`} value={s.method} onChange={(e) => setSplit(i, "method", e.target.value)}
               className="bg-[var(--surface-2)] border border-[var(--border)] rounded-md px-2 py-1.5 text-sm">
