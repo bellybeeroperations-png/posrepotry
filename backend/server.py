@@ -22,13 +22,14 @@ from auth import (
     make_current_user_dep, _oid,
 )
 from models import (
-    LoginIn, PinLoginIn, CategoryIn, ProductIn, AreaIn, TableIn, TablePosIn,
-    MemberIn, HappyHourIn, OrderIn, OrderUpdate, PaymentIn, StaffIn, ReservationIn,
+    LoginIn, PinLoginIn, CategoryIn, ProductIn, AreaIn,
+    MemberIn, HappyHourIn, StaffIn, ReservationIn,
     WaitlistIn, ComboIn, PinVerifyIn,
 )
 from seed import seed_all
-from routers.kegs import router as kegs_router, decrement_kegs_for_order
+from routers.kegs import router as kegs_router
 from routers.tables import router as tables_router
+from routers.orders import router as orders_router
 
 # ----- DB -----
 mongo_url = os.environ["MONGO_URL"]
@@ -270,215 +271,8 @@ async def delete_member(mid: str, user: dict = Depends(get_current_user)):
 
 
 # ===================== ORDERS =====================
-def _compute_totals(lines, discount_type, discount_value, service_charge_pct, combos=None):
-    subtotal = sum(l["price"] * l["qty"] for l in lines)
-    discount = 0.0
-    combo_discount = 0.0
-    combos_applied = []
-    if combos:
-        line_pids = {l.get("product_id") for l in lines if (l.get("qty") or 0) > 0}
-        for c in combos:
-            if not c.get("active", True):
-                continue
-            required = set(c.get("product_ids") or [])
-            if required and required.issubset(line_pids):
-                d = 0.0
-                if c.get("discount_type") == "percent":
-                    d = subtotal * (c.get("discount_value", 0) / 100)
-                else:
-                    d = c.get("discount_value", 0)
-                combo_discount += d
-                combos_applied.append({
-                    "name": c.get("name"),
-                    "discount_type": c.get("discount_type"),
-                    "discount_value": c.get("discount_value"),
-                    "applied_discount": round(d, 2),
-                })
-    if discount_type == "percent":
-        discount = subtotal * (discount_value / 100.0)
-    elif discount_type == "cash":
-        discount = min(discount_value, subtotal)
-    net = max(0.0, subtotal - discount - combo_discount)
-    service = round(net * (service_charge_pct / 100.0), 2)
-    total = round(net + service, 2)
-    return {
-        "subtotal": round(subtotal, 2),
-        "discount": round(discount, 2),
-        "combo_discount": round(combo_discount, 2),
-        "combos_applied": combos_applied,
-        "service_charge": service,
-        "total": total,
-    }
-
-
-async def _active_combos():
-    return await db.combos.find({"active": True}).to_list(200)
-
-
-@api.get("/orders")
-async def list_orders(status: Optional[str] = None, limit: int = 100, user: dict = Depends(get_current_user)):
-    q = {"status": status} if status else {}
-    return sl(await db.orders.find(q).sort("opened_at", -1).to_list(limit))
-
-
-@api.get("/orders/{oid}")
-async def get_order(oid: str, user: dict = Depends(get_current_user)):
-    o = await db.orders.find_one({"_id": _oid(oid)})
-    if not o:
-        raise HTTPException(404, "Not found")
-    return serialize(o)
-
-
-@api.post("/orders")
-async def create_order(body: OrderIn, user: dict = Depends(get_current_user)):
-    lines = [l.model_dump() for l in body.lines]
-    combos = await _active_combos()
-    totals = _compute_totals(lines, body.discount_type, body.discount_value, body.service_charge_pct, combos)
-    doc = body.model_dump()
-    doc["lines"] = lines
-    doc.update(totals)
-    doc["status"] = "open"
-    doc["server_id"] = body.server_id or user["id"]
-    doc["opened_at"] = datetime.now(timezone.utc).isoformat()
-    doc["closed_at"] = None
-    r = await db.orders.insert_one(doc)
-    order_id = str(r.inserted_id)
-    if body.table_id:
-        await db.tables.update_one(
-            {"_id": _oid(body.table_id)},
-            {"$set": {"status": "occupied", "current_order_id": order_id}},
-        )
-    doc["_id"] = r.inserted_id
-    return serialize(doc)
-
-
-@api.patch("/orders/{oid}")
-async def update_order(oid: str, body: OrderUpdate, user: dict = Depends(get_current_user)):
-    existing = await db.orders.find_one({"_id": _oid(oid)})
-    if not existing:
-        raise HTTPException(404, "Not found")
-    update = {k: v for k, v in body.model_dump().items() if v is not None}
-    combos = await _active_combos()
-    if "lines" in update:
-        lines = update["lines"]
-        totals = _compute_totals(
-            lines,
-            update.get("discount_type", existing.get("discount_type", "none")),
-            update.get("discount_value", existing.get("discount_value", 0)),
-            existing.get("service_charge_pct", 10),
-            combos,
-        )
-        update.update(totals)
-    elif "discount_type" in update or "discount_value" in update:
-        totals = _compute_totals(
-            existing["lines"],
-            update.get("discount_type", existing.get("discount_type", "none")),
-            update.get("discount_value", existing.get("discount_value", 0)),
-            existing.get("service_charge_pct", 10),
-            combos,
-        )
-        update.update(totals)
-    await db.orders.update_one({"_id": _oid(oid)}, {"$set": update})
-    return serialize(await db.orders.find_one({"_id": _oid(oid)}))
-
-
-@api.post("/orders/{oid}/fire")
-async def fire_order(oid: str, course: Optional[str] = None, user: dict = Depends(get_current_user)):
-    """Un-hold items — mark them as fired for kitchen/bar."""
-    o = await db.orders.find_one({"_id": _oid(oid)})
-    if not o:
-        raise HTTPException(404, "Not found")
-    lines = o.get("lines", [])
-    fired = 0
-    for l in lines:
-        if l.get("held") and (course is None or l.get("course") == course):
-            l["held"] = False
-            l["fired_at"] = datetime.now(timezone.utc).isoformat()
-            fired += 1
-    await db.orders.update_one({"_id": _oid(oid)}, {"$set": {"lines": lines}})
-    return {"fired": fired}
-
-
-@api.post("/orders/{oid}/pay")
-async def pay_order(oid: str, body: PaymentIn, user: dict = Depends(get_current_user)):
-    o = await db.orders.find_one({"_id": _oid(oid)})
-    if not o:
-        raise HTTPException(404, "Not found")
-    change = 0.0
-    if body.method == "split":
-        paid = sum((s.get("amount") or 0) for s in body.splits)
-        if paid + 0.01 < o["total"]:
-            raise HTTPException(400, f"Split total HK${paid:.2f} is less than order total HK${o['total']:.2f}")
-        change = round(paid - o["total"], 2)
-    elif body.method == "cash":
-        change = round(body.amount - o["total"], 2)
-    payment = {
-        "method": body.method, "amount": body.amount, "tip": body.tip,
-        "splits": body.splits, "change": max(change, 0),
-        "paid_at": datetime.now(timezone.utc).isoformat(),
-        "cashier_id": user["id"],
-    }
-    await db.orders.update_one(
-        {"_id": _oid(oid)},
-        {"$set": {"status": "paid", "payment": payment,
-                  "closed_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if o.get("table_id"):
-        await db.tables.update_one(
-            {"_id": _oid(o["table_id"])},
-            {"$set": {"status": "dirty", "current_order_id": None}},
-        )
-    # decrement kegs for any linked draught lines
-    try:
-        await decrement_kegs_for_order(o)
-    except Exception:
-        pass  # keg tracking best-effort; never block payment
-    if o.get("member_id"):
-        opened = o.get("opened_at")
-        dur_min = 0
-        if opened:
-            try:
-                d = datetime.now(timezone.utc) - datetime.fromisoformat(opened)
-                dur_min = int(d.total_seconds() / 60)
-            except Exception:
-                dur_min = 0
-        item_names = [l["name"] for l in o.get("lines", [])]
-        member = await db.members.find_one({"_id": _oid(o["member_id"])})
-        if member:
-            visits = member.get("visits", 0) + 1
-            lifetime = member.get("lifetime_spend", 0.0) + o["total"]
-            points = member.get("points", 0) + int(o["total"] // 10)
-            fav = list(set((member.get("favorite_items") or []) + item_names))[:20]
-            avg_prev = member.get("avg_duration_min", 0) or 0
-            avg_new = int(((avg_prev * (visits - 1)) + dur_min) / max(visits, 1))
-            await db.members.update_one(
-                {"_id": _oid(o["member_id"])},
-                {"$set": {
-                    "visits": visits, "lifetime_spend": lifetime,
-                    "points": points, "favorite_items": fav,
-                    "avg_duration_min": avg_new,
-                }},
-            )
-    return serialize(await db.orders.find_one({"_id": _oid(oid)}))
-
-
-@api.delete("/orders/{oid}")
-async def void_order(oid: str, user: dict = Depends(get_current_user)):
-    if user["role"] not in ("admin", "manager"):
-        raise HTTPException(403, "Manager override required to void")
-    o = await db.orders.find_one({"_id": _oid(oid)})
-    if not o:
-        raise HTTPException(404, "Not found")
-    await db.orders.update_one({"_id": _oid(oid)}, {"$set": {"status": "voided"}})
-    if o.get("table_id"):
-        await db.tables.update_one(
-            {"_id": _oid(o["table_id"])},
-            {"$set": {"status": "available", "current_order_id": None}},
-        )
-    return {"ok": True}
-
-
-# NOTE: /api/tables/{id}/clear and /api/tables/{id}/status also moved to routers/tables.py.
+# All /api/orders* endpoints moved to routers/orders.py.
+# The exclusivity-aware totals engine lives there too.
 
 
 # ===================== STAFF =====================
@@ -599,20 +393,6 @@ async def kds(station: str = "all", user: dict = Depends(get_current_user)):
             })
     tickets.sort(key=lambda x: x["fired_at"] or "")
     return tickets
-
-
-@api.post("/orders/{oid}/bump/{index}")
-async def bump_line(oid: str, index: int, user: dict = Depends(get_current_user)):
-    o = await db.orders.find_one({"_id": _oid(oid)})
-    if not o:
-        raise HTTPException(404, "Not found")
-    lines = o.get("lines", [])
-    if index < 0 or index >= len(lines):
-        raise HTTPException(400, "Bad line index")
-    lines[index]["bumped_at"] = datetime.now(timezone.utc).isoformat()
-    lines[index]["bumped_by"] = user["id"]
-    await db.orders.update_one({"_id": _oid(oid)}, {"$set": {"lines": lines}})
-    return {"ok": True, "bumped_at": lines[index]["bumped_at"]}
 
 
 # ===================== SHIFTS =====================
@@ -850,6 +630,7 @@ async def pin_verify(body: PinVerifyIn):
 app.include_router(api)
 app.include_router(kegs_router)      # split: kegs + prep-view + analytics
 app.include_router(tables_router)    # split: tables endpoints
+app.include_router(orders_router)    # split: orders + exclusivity totals engine
 
 app.add_middleware(
     CORSMiddleware,

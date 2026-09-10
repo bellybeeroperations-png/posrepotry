@@ -11,6 +11,64 @@ async def seed_all(db):
     await _seed_members(db)
     await _seed_happy_hours(db)
     await _seed_kegs(db)
+    await _seed_combos(db)
+
+
+async def _seed_combos(db):
+    """Idempotent — inserts advanced slot-based demo combos so a fresh install
+    shows the new Combo procedure (AND/OR + min/max qty) in the Register."""
+    if await db.combos.count_documents({}) > 0:
+        return
+
+    async def _find(names):
+        return [p async for p in db.products.find({"name": {"$in": names}})]
+
+    signature = await _find(["Hong Kong Sour", "Neon Negroni", "Lychee Martini"])
+    classic = await _find(["Old Fashioned", "Johnnie Walker Black"])
+    draught = await _find(["Tsingtao", "Craft IPA", "San Miguel"])
+    snacks = await _find(["Truffle Fries", "Chicken Wings", "Salt & Pepper Squid"])
+    mains = await _find(["Wagyu Burger", "Ribeye Steak 250g", "Fish & Chips", "Pad Thai"])
+
+    def ids(lst):
+        return [str(p["_id"]) for p in lst]
+
+    now = datetime.now(timezone.utc).isoformat()
+    combos = []
+    if signature and classic:
+        combos.append({
+            "name": "Cocktail Duo",
+            "product_ids": [],
+            "slots": [
+                {"operator": "or", "min_qty": 1, "max_qty": 1, "product_ids": ids(signature)},
+                {"operator": "or", "min_qty": 1, "max_qty": 1, "product_ids": ids(classic)},
+            ],
+            "discount_type": "percent", "discount_value": 15.0,
+            "active": True, "created_at": now,
+        })
+    if draught and snacks:
+        combos.append({
+            "name": "Beer & Bites",
+            "product_ids": [],
+            "slots": [
+                {"operator": "or", "min_qty": 1, "max_qty": 2, "product_ids": ids(draught)},
+                {"operator": "or", "min_qty": 1, "max_qty": 2, "product_ids": ids(snacks)},
+            ],
+            "discount_type": "cash", "discount_value": 25.0,
+            "active": True, "created_at": now,
+        })
+    if mains:
+        combos.append({
+            "name": "Steak Night · any 2 mains",
+            "product_ids": [],
+            "slots": [
+                {"operator": "or", "min_qty": 2, "max_qty": 2, "product_ids": ids(mains)},
+            ],
+            "discount_type": "cash", "discount_value": 40.0,
+            "active": True, "created_at": now,
+        })
+
+    if combos:
+        await db.combos.insert_many(combos)
 
 
 async def _seed_kegs(db):

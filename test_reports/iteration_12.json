@@ -1,0 +1,30 @@
+{
+  "summary": "Iter 12 Advanced Combo Slots — tested backend slot semantics + POST/GET/PATCH persistence, and frontend ComboEditor UI (slot builder, product toggles, save). 5/5 backend tests pass. UI flow (open editor → set name/discount → add 2nd slot → switch to AND → pick products → save → combo appears in list) works end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Menu combos card view", "issue": "Slot-based combos display an empty 'WHEN TICKET CONTAINS:' row on the combo card (only legacy flat product_ids are rendered as chips). Users can't see slot rules at a glance from the list — must open the editor to view them.", "selector": "combo card body under text 'WHEN TICKET CONTAINS'", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter12_combos.py", "/app/test_reports/pytest/iter12.xml"],
+  "action_items": [
+    "Enhance Menu combos card view to render slot rules (e.g. 'Slot A (OR 1-1): Beer|Wine|Cocktail  +  Slot B (AND ≤2): Bread & Chicken') for slot-based combos so the empty 'WHEN TICKET CONTAINS' row isn't shown for new combos."
+  ],
+  "critical_code_review_comments": [
+    "server.py _combo_matches: correct — legacy path (no slots) + OR (total in [min,max]) + AND (each>=1 & each<=max). Matches spec.",
+    "Frontend Register.jsx totals combo logic mirrors backend (good).",
+    "ComboEditor migrates legacy flat product_ids into a single OR slot on edit — good backward-compat.",
+    "server.py: /api/combos POST/PATCH/DELETE have no role guard — any authenticated user can create/delete combos; consider restricting to admin/manager for consistency with staff routes.",
+    "server.py file is ~910 lines — approaching split threshold; combos endpoints could be extracted into routers/combos.py like tables/kegs were."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_combos.py"],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "test_credentials": "admin polymuze111@gmail.com / admin123, PIN 9999",
+  "seed_data_creation": "Fixture creates TEST_ITER12_* combos and cleans them up after each test. UI test left one 'TEST_UI_COMBO_ITER12' combo behind (cleanup step failed on 403 during curl-based delete; combo can be deleted manually from Menu > Combos).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter 12 combo slot feature is functionally correct on both API and UI. Prior iterations 1-11 not re-run (per instructions). One residual UI polish item: combo card list view is missing slot rule chips for slot-based combos. Backend combo endpoints are unauthenticated beyond login — consider role gating.",
+  "rca of the issue": "No blocking issues. Minor UI enhancement identified: Menu.jsx combo card rendering only reads legacy c.product_ids, so slot-based combos show a blank chip row. Fix: render slot summary chips when c.slots?.length > 0."
+}

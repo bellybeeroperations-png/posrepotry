@@ -1,0 +1,26 @@
+{
+  "summary": "Iter 13 — Promo/Combo/Order-discount mutual exclusivity + /api/orders* router extraction. Ran the existing 5 unit tests on _compute_totals + wrote 8 new HTTP integration tests hitting the extracted /api/orders* router (all 13 passing). Frontend UI verified end-to-end on /register: HH banner + HH lock badges, combo lock badges + combo line in totals, exclusivity note, order-level discount base excludes HH/combo lines, save + fire course + cash payment + receipt modal all functional.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_exclusivity.py",
+    "/app/backend/tests/test_iter13_orders_router.py",
+    "/app/test_reports/pytest/iter13_all.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/orders.py: `_compute_totals` correctly implements HH -> Combo -> Order-discount precedence and greedy best-combo selection with overlap skipping.",
+    "routers/orders.py has no role guard on DELETE (void) is correctly restricted to admin/manager; PATCH/POST/pay open to any authenticated user — acceptable for POS staff.",
+    "Frontend `Register.jsx` totals useMemo mirrors backend logic exactly — good parity.",
+    "Minor: `deps.py` shared handle keeps orders.py clean; server.py delegates to router — clean split. Consider extracting /api/combos to its own router too (server.py still ~900 lines).",
+    "PaymentIn `amount` for split can be 0 while splits sum to total — server correctly validates via `paid + 0.01 < total`; good."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter13_orders_router.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100%"},
+  "test_credentials": "admin polymuze111@gmail.com / admin123 (PIN 9999)",
+  "seed_data_creation": "Temporarily created HappyHour 'TEST_ITER13_HH' (Beer, 24h, 20% off) to exercise live HH pricing then deleted it. TEST_ITER13_* combos in the http test are auto-cleaned by the fixture. Pre-seeded 'Duo Deal' and 'Third Wheel' combos remain intact.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 13 exclusivity engine + /api/orders* router extraction are fully green on backend (unit + HTTP integration) and UI. Numeric proofs captured in the run: HH test — 3 lines Tsingtao 44 + Craft IPA 60 + Wagyu 168 = 272; 20% order discount = 33.6 (20% of the 168 unlocked line only). Combo test — HK Sour 118 + Neon Negroni 128 + Wagyu 168 = 414; Duo Deal locks the two cocktails for 62.1 (15% of subtotal), 20% order discount = 33.6 (20% of 168), total 350.13. Cash payment through /api/orders/{id}/pay completed and receipt modal rendered.",
+  "rca of the issue": "N/A — no bugs found."
+}

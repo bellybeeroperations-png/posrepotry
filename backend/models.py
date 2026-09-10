@@ -108,13 +108,14 @@ class HappyHourIn(BaseModel):
 class OrderLineIn(BaseModel):
     product_id: str
     name: str
-    price: float  # unit price after variant delta
+    price: float  # unit price after variant delta (and after HH discount if any)
     qty: int = 1
     variant: Optional[str] = None
     modifiers: List[str] = []
     course: str = "main"
     held: bool = False
     notes: Optional[str] = ""
+    hh_pct: float = 0.0  # non-zero when the register applied happy-hour pricing
 
 
 class OrderIn(BaseModel):
@@ -177,9 +178,17 @@ class WaitlistIn(BaseModel):
 
 
 # -------- Combo Deals --------
+class ComboSlot(BaseModel):
+    operator: Literal["or", "and"] = "or"
+    min_qty: int = 1
+    max_qty: int = 99
+    product_ids: List[str] = []
+
+
 class ComboIn(BaseModel):
     name: str
-    product_ids: List[str]
+    product_ids: List[str] = []  # legacy — flat list still supported
+    slots: List[ComboSlot] = []  # NEW — advanced slot rules (A+B+C+D)
     discount_type: Literal["percent", "cash"] = "percent"
     discount_value: float = 10.0
     active: bool = True

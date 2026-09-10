@@ -61,7 +61,14 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
-## What's Implemented (v8 · Feb 2026 iteration)
+## What's Implemented (v9 · Feb 2026 — Iter 13)
+- **Orders router extracted**: all `/api/orders*` endpoints (list, get, create, patch, fire, pay, void, bump) moved into `/app/backend/routers/orders.py`. The exclusivity totals engine lives beside them. `server.py` is now ~530 lines.
+- **Promo / Combo / Discount Mutual Exclusivity**: a product that already receives one promotion cannot receive another. Precedence HH → Combo → order-level discount. Backend `_compute_totals` returns `hh_locked_product_ids` + `combo_locked_product_ids`; frontend `Register.jsx` mirrors the same math and paints per-line "HH -X%" or "COMBO · <name>" lock badges plus an exclusivity note so staff see why a discount button is inert.
+- **`hh_pct` line field** added to `OrderLineIn` — the register stamps it when it applies happy-hour pricing so the backend can enforce exclusivity on save/pay.
+- **Advanced combo seed** — `_seed_combos` now seeds 3 slot-based demo combos on fresh installs: "Cocktail Duo" (2 slots, AND-style), "Beer & Bites" (2 slots, min/max qty), "Steak Night" (1 slot, any-2 mains).
+- **Tests**: 5/5 `tests/test_iter13_exclusivity.py` unit + 8/8 `tests/test_iter13_orders_router.py` HTTP integration = 13/13 green. Frontend E2E (HH banner + lock badges + combo banner + payment + receipt) verified by testing agent.
+
+
 - **Tables router extracted**: every `/api/tables*` endpoint moved to `/app/backend/routers/tables.py`; `server.py` shows a `NOTE` comment where they lived. Orders extraction remains next-up (staged rollout).
 - **Keg Analytics**: every paid pour is now logged to `db.keg_pours`; new `GET /api/kegs/{id}/pours?days=7` returns per-day pour volume + `total_ml` / `total_pints` (with 0-fill for missing days). Frontend `keg-chart-<name>` button per card opens a modal with 3 KPIs (Total / Daily avg / Peak day) and a Recharts LineChart of the 7-day velocity.
 - **Prep Bump All**: `POST /api/kds/prep/bump?product_id=…` bumps every fired-not-bumped line matching that product across all open orders. Frontend KDS Prep View gets a `prep-bump-all-<name>` button on every row → toast "Bumped N tickets" and the row disappears in one tap.

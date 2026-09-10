@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fmtHKD } from "@/lib/api";
 import {
-  Plus, Minus, Trash2, Pause, Play, Flame,
+  Plus, Minus, Trash2, Pause, Play, Flame, Lock,
   ShoppingBag, Truck, UtensilsCrossed, User as UserIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -14,7 +14,7 @@ const ORDER_TYPES = [
 ];
 
 export default function CartTicket({
-  order, setOrder, totals, activeHH,
+  order, setOrder, totals, activeHH, combos,
   onSave, onPay, onRepeat, onRemoveLine, onFireCourse,
   onSearchMember, members, memberQ, onAttachMember,
 }) {
@@ -24,7 +24,7 @@ export default function CartTicket({
         memberQ={memberQ} members={members} onAttachMember={onAttachMember} />
       <FireCourseBar onFire={onFireCourse} disabled={!order?.id} />
       <OrderTypeTabs order={order} setOrder={setOrder} />
-      <TicketLines order={order} setOrder={setOrder} onRemove={onRemoveLine} />
+      <TicketLines order={order} setOrder={setOrder} onRemove={onRemoveLine} totals={totals} />
       <TicketTotals order={order} setOrder={setOrder} totals={totals}
         onSave={onSave} onPay={onPay} onRepeat={onRepeat} />
     </div>
@@ -115,7 +115,7 @@ function FireCourseBar({ onFire, disabled }) {
   );
 }
 
-function TicketLines({ order, setOrder, onRemove }) {
+function TicketLines({ order, setOrder, onRemove, totals }) {
   const qtyChange = (i, d) =>
     setOrder((o) => {
       const lines = [...o.lines];
@@ -129,21 +129,49 @@ function TicketLines({ order, setOrder, onRemove }) {
       return { ...o, lines };
     });
 
+  const hhSet = totals?.hh_locked || new Set();
+  const comboSet = totals?.combo_locked || new Set();
+  const comboMap = totals?.combo_line_map || {};
+
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
       {order.lines.length === 0 && (
         <div className="text-center text-[var(--muted)] text-sm py-10">Tap products to add</div>
       )}
-      {order.lines.map((l, i) => (
-        <div key={i} className={`p-2 rounded-lg border ${l.held ? "border-dashed border-[var(--amber)] bg-[var(--amber)]/5" : "border-[var(--border)] bg-[var(--surface-2)]"}`}>
+      {order.lines.map((l, i) => {
+        const hhLocked = hhSet.has(l.product_id);
+        const comboLocked = comboSet.has(l.product_id);
+        const locked = hhLocked || comboLocked;
+        return (
+        <div key={`${l.product_id}-${l.variant || ""}-${i}`}
+          data-testid={`cart-line-${i}`}
+          className={`p-2 rounded-lg border ${
+            l.held ? "border-dashed border-[var(--amber)] bg-[var(--amber)]/5" :
+            comboLocked ? "border-[var(--cyan)]/60 bg-[var(--cyan)]/5" :
+            hhLocked ? "border-[var(--amber)]/50 bg-[var(--amber)]/5" :
+            "border-[var(--border)] bg-[var(--surface-2)]"
+          }`}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               <div className="font-semibold text-sm text-white">{l.name}</div>
               {l.modifiers?.length > 0 && (
                 <div className="text-[10px] text-[var(--muted)]">+ {l.modifiers.join(", ")}</div>
               )}
-              <div className="text-[10px] font-mono uppercase text-[var(--muted)] mt-0.5">
-                {l.course} {l.held && "· HELD"}
+              <div className="text-[10px] font-mono uppercase text-[var(--muted)] mt-0.5 flex items-center gap-1 flex-wrap">
+                <span>{l.course}</span>
+                {l.held && <span>· HELD</span>}
+                {hhLocked && (
+                  <span data-testid={`lock-hh-${i}`}
+                    className="ml-1 px-1.5 py-0.5 rounded bg-[var(--amber)]/20 border border-[var(--amber)]/50 text-[var(--amber)] flex items-center gap-1">
+                    <Lock size={9} /> HH -{l.hh_pct}%
+                  </span>
+                )}
+                {comboLocked && (
+                  <span data-testid={`lock-combo-${i}`}
+                    className="ml-1 px-1.5 py-0.5 rounded bg-[var(--cyan)]/20 border border-[var(--cyan)]/50 text-[var(--cyan)] flex items-center gap-1">
+                    <Lock size={9} /> COMBO · {comboMap[l.product_id]}
+                  </span>
+                )}
               </div>
             </div>
             <div className="text-right">
@@ -160,7 +188,13 @@ function TicketLines({ order, setOrder, onRemove }) {
             </div>
           </div>
         </div>
-      ))}
+      );})}
+      {(hhSet.size > 0 || comboSet.size > 0) && (
+        <div data-testid="exclusivity-note"
+          className="mt-2 px-2 py-1.5 rounded border border-dashed border-[var(--border)] text-[10px] font-mono uppercase text-[var(--muted)] flex items-center gap-1">
+          <Lock size={10} /> Locked lines skip manual discounts &amp; other combos
+        </div>
+      )}
     </div>
   );
 }
