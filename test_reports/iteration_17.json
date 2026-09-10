@@ -1,0 +1,40 @@
+{
+  "summary": "Iter17 tests: 4 backend features (combo-hints, substitutes, delivery ingest/simulate/inbox, preauth) all pass — 7/7 pytest. 4 frontend flows tested: Preauth modal → /register redirect PASS; Delivery simulate 2x PASS (rose/emerald/amber cards); Combo Heat-Map glow PASS but badge text is broken; Substitution Pop on Register FAIL — 86'd product tile is disabled at ProductGrid so click never reaches addProduct().",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Floorplan combo-hint badge", "issue": "Renders '-undefined%' for percent combos. Frontend uses hint.discount_value but backend /api/floorplan/combo-hints returns {discount, discount_type, ...} with NO discount_value key.", "selector": "[data-testid^='combo-hint-']", "priority": "HIGH"},
+      {"component": "Register ProductGrid tile (86'd product)", "issue": "Button is `disabled={eight}` and onClick guarded by `!eight && onPick(p)` — so tapping a 86'd tile never fires the substitution toast. Register.jsx addProduct() has correct substitute-fetch code but it is unreachable.", "selector": "[data-testid^='prod-']", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Substitution Pop", "issue": "End-to-end broken: /menu 86 toggle works, GET /products/{id}/substitutes returns valid subs (verified in backend tests), but Register UI cannot invoke it because the tile is disabled. Remove `disabled={eight}` and `!eight &&` guard in ProductGrid.jsx (still keep visual 86'd overlay).", "affected_selectors": ["[data-testid='prod-Hong Kong Sour']"]}
+    ],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_pytest": {"file": "backend/tests/test_iter17_features.py", "passed": 7, "failed": 0, "junit_xml": "/app/test_reports/pytest/iter17.xml"},
+    "frontend": {
+      "preauth_open_flow": "PASS — Alice/4242/500 → /register?order=<id>, guests=2 shown",
+      "delivery_simulate_x2": "PASS — 2 new delivery-card-* rendered (rose/emerald/amber platform tint verified visually)",
+      "combo_heat_map_glow": "PARTIAL — cyan glow + combo-hint-<TableName> badge renders, but text is '+1 Johnnie → -undefined%' instead of '+1 Johnnie → -10%'",
+      "substitution_pop": "FAIL — click on 86'd Hong Kong Sour tile does nothing (tile disabled); no toast fires"
+    }
+  },
+  "test_report_links": ["/app/backend/tests/test_iter17_features.py", "/app/test_reports/pytest/iter17.xml"],
+  "action_items": [
+    "FIX Floorplan.jsx line 331: replace `${hint.discount_value}%` with reading the combo's percent value. Cleanest fix: backend routers/orders.py combo_hints() should also emit `discount_value: c.get('discount_value')` in each hint dict. Then the current frontend code renders correctly.",
+    "FIX ProductGrid.jsx: remove `disabled={eight}` and change onClick to `() => onPick(p)` so 86'd tiles still fire addProduct(); keep the visual 86'd overlay. Register.jsx already handles the p.eightysix branch and shows the substitute toast."
+  ],
+  "critical_code_review_comments": [
+    "routers/orders.py combo_hints returns `discount` (money) + `discount_type` but not `discount_value` — mismatched contract with Floorplan.jsx expectation.",
+    "ProductGrid.jsx blocks 86'd clicks entirely, defeating the whole Substitution Pop feature."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter17_features.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "50% (2/4 flows fully green; combo badge text bug + substitution pop unreachable)"},
+  "test_credentials": "admin polymuze111@gmail.com / admin123 (worked)",
+  "seed_data_creation": "None — all test artifacts (orders, 86 toggles) cleaned up after each test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend fully green. Two focused frontend fixes needed: (a) include discount_value in combo_hints response, (b) unblock click on 86'd product tile in ProductGrid.jsx. After fixes, re-run only the two failing frontend flows.",
+  "rca of the issue": "1) Combo badge: contract mismatch between backend `/api/floorplan/combo-hints` (returns discount, discount_type) and frontend Floorplan.jsx line 331 (reads hint.discount_value). Reproduction: open dine-in order with 1x Hong Kong Sour on any table → Floorplan renders `+1 Johnnie → -undefined%`. 2) Substitution Pop: ProductGrid.jsx renders 86'd tiles with `disabled={eight}` AND guards onClick with `!eight && onPick(p)`. Since HTML disabled buttons don't fire click events, Register.jsx addProduct() never runs and cannot dispatch the substitute toast even though GET /api/products/{id}/substitutes works correctly (verified by backend pytest)."
+}

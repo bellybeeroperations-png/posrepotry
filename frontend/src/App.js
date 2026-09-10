@@ -17,6 +17,7 @@ import MobileMenu from "@/pages/MobileMenu";
 import Waitlist from "@/pages/Waitlist";
 import Kegs from "@/pages/Kegs";
 import QuickBar from "@/pages/QuickBar";
+import Delivery from "@/pages/Delivery";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/waitlist" element={<Protected><Waitlist /></Protected>} />
           <Route path="/kegs" element={<Protected><Kegs /></Protected>} />
           <Route path="/bar" element={<Protected><QuickBar /></Protected>} />
+          <Route path="/delivery" element={<Protected><Delivery /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

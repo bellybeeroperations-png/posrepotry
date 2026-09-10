@@ -2,9 +2,10 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
-import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, DollarSign, AlertCircle, Radio, Trophy, Target, MoonStar } from "lucide-react";
+import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, DollarSign, AlertCircle, Radio, Trophy, Target, MoonStar, CreditCard, TrendingUp } from "lucide-react";
 import { ReservationModal, TableActionModal } from "@/components/pos/Reservations";
 import { QRCode as QRModal } from "@/components/pos/QRCode";
+import PreauthModal from "@/components/pos/PreauthModal";
 
 const STATUS_LABELS = {
   available: "Available",
@@ -32,6 +33,8 @@ export default function Floorplan() {
   const [selTable, setSelTable] = useState(null);
   const [reserveTable, setReserveTable] = useState(null);
   const [qrTable, setQrTable] = useState(null);
+  const [preauthTable, setPreauthTable] = useState(null);
+  const [comboHints, setComboHints] = useState({});  // { table_id: [hints...] }
   const nav = useNavigate();
 
   const load = useCallback(async () => {
@@ -61,6 +64,18 @@ export default function Floorplan() {
     const fetchAll = () => api.get("/tables").then((r) => setAllTables(r.data));
     fetchAll();
     const t = setInterval(fetchAll, 10000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ---- Combo heat-map: 1-more-away upsell hints per table ----
+  useEffect(() => {
+    const fetchHints = () => api.get("/floorplan/combo-hints").then((r) => {
+      const map = {};
+      (r.data || []).forEach((row) => { map[row.table_id] = row.hints; });
+      setComboHints(map);
+    }).catch(() => {});
+    fetchHints();
+    const t = setInterval(fetchHints, 8000);
     return () => clearInterval(t);
   }, []);
 
@@ -182,6 +197,20 @@ export default function Floorplan() {
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
   };
 
+  const openPreauth = async (payload) => {
+    try {
+      const r = await api.post("/tabs/preauth", payload);
+      toast.success(`Preauth tab opened for ${payload.customer_name}`);
+      setPreauthTable(null);
+      const [a, all] = await Promise.all([
+        api.get("/tables", { params: { area_id: activeArea } }),
+        api.get("/tables"),
+      ]);
+      setTables(a.data); setAllTables(all.data);
+      nav(`/register?order=${r.data.id}${payload.table_id ? `&table=${payload.table_id}` : ""}`);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Business KPI bar */}
@@ -244,6 +273,11 @@ export default function Floorplan() {
             title="Batch-settle every open tab at last call">
             <MoonStar size={14} /> Last Call · Auto-Close
           </button>
+          <button data-testid="btn-preauth-tab" onClick={() => setPreauthTable({ id: null, name: "Bar" })}
+            className="px-4 py-2 rounded-lg font-mono text-xs uppercase tracking-widest border border-[var(--cyan)] bg-[var(--cyan)]/10 text-[var(--cyan)] flex items-center gap-2 hover:bg-[var(--cyan)]/20"
+            title="Open a card-on-file tab so guests can't walk out">
+            <CreditCard size={14} /> Preauth Tab
+          </button>
         </div>
       </div>
 
@@ -264,7 +298,9 @@ export default function Floorplan() {
           onMouseLeave={onUp}
           data-testid="floorplan-canvas"
         >
-          {tables.map((t) => (
+          {tables.map((t) => {
+            const hint = comboHints[t.id]?.[0];
+            return (
             <div
               key={t.id}
               data-testid={`table-${t.name}`}
@@ -274,8 +310,11 @@ export default function Floorplan() {
                 t.shape === "circle" ? "rounded-full" : "rounded-lg"
               } select-none flex flex-col items-center justify-center p-2 transition-transform hover:scale-105 ${
                 editMode ? "cursor-move" : "cursor-pointer"
-              }`}
-              style={{ left: t.x, top: t.y, width: t.width, height: t.height }}
+              } ${hint ? "ring-2 ring-[var(--cyan)] ring-offset-2 ring-offset-[var(--surface)]" : ""}`}
+              style={{
+                left: t.x, top: t.y, width: t.width, height: t.height,
+                boxShadow: hint ? "0 0 24px rgba(0,242,254,0.55)" : undefined,
+              }}
             >
               <div className="font-display font-black text-lg">{t.name}</div>
               <div className="flex items-center gap-1 text-[10px] font-mono opacity-80">
@@ -284,6 +323,12 @@ export default function Floorplan() {
               {t.current_order && (
                 <div className="font-mono text-[11px] font-bold mt-0.5">
                   {fmtHKD(t.current_order.total)}
+                </div>
+              )}
+              {hint && (
+                <div data-testid={`combo-hint-${t.name}`}
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-[var(--cyan)] text-black text-[9px] font-mono font-black flex items-center gap-0.5 shadow-lg">
+                  <TrendingUp size={9} /> +1 {hint.product_name?.split(" ")[0]} → -{hint.discount_type === "percent" ? `${hint.discount_value}%` : fmtHKD(hint.discount)}
                 </div>
               )}
               {t.reservation && t.status === "reserved" && (
@@ -302,7 +347,7 @@ export default function Floorplan() {
                 </button>
               )}
             </div>
-          ))}
+          );})}
           {editMode && (
             <div className="absolute bottom-4 left-4 bg-black/70 px-3 py-2 rounded-lg text-xs font-mono flex items-center gap-2">
               <Move size={14} /> Drag tables to reposition
@@ -367,6 +412,10 @@ export default function Floorplan() {
         />
       )}
       {qrTable && <QRModal table={qrTable} onClose={() => setQrTable(null)} />}
+      {preauthTable && (
+        <PreauthModal table={preauthTable.id ? preauthTable : null}
+          onClose={() => setPreauthTable(null)} onOpened={openPreauth} />
+      )}
     </div>
   );
 }

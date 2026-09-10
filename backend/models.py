@@ -221,6 +221,30 @@ class MergeOrdersIn(BaseModel):
     target_id: str
 
 
+# -------- Bar preauth + Delivery --------
+class PreauthTabIn(BaseModel):
+    customer_name: str
+    card_last4: str = Field(min_length=4, max_length=4)
+    hold_amount: float = 0.0
+    table_id: Optional[str] = None
+    party_size: int = 1
+
+
+class DeliveryLineIn(BaseModel):
+    product_id: str
+    qty: int = 1
+    notes: Optional[str] = ""
+
+
+class DeliveryIngestIn(BaseModel):
+    platform: Literal["foodpanda", "deliveroo", "keeta"] = "foodpanda"
+    external_id: str
+    customer_name: str
+    customer_phone: str = ""
+    items: List[DeliveryLineIn] = []
+    fee: float = 0.0
+
+
 # -------- PIN Verify --------
 class PinVerifyIn(BaseModel):
     pin: str

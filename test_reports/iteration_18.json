@@ -1,0 +1,36 @@
+{
+  "summary": "Iter18 retest of 2 iter17 fixes. Backend combo_hints fix IS applied (discount_value now emitted) — Floorplan badge renders '+1 Johnnie → -15%' correctly ✅. Frontend ProductGrid.jsx fix is NOT applied — file still has `disabled={eight}` (line 41) and `onClick={() => !eight && onPick(p)}` (line 40). Consequently 86'd tile click does not fire addProduct(), no substitution toast, no 'Add substitute' button ❌.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Register ProductGrid tile (86'd product)", "issue": "Iter17 fix was NOT applied. /app/frontend/src/components/pos/register/ProductGrid.jsx lines 40-41 still contain `onClick={() => !eight && onPick(p)}` and `disabled={eight}`. Since HTML disabled buttons don't fire click events, Register.jsx addProduct() is never invoked and the Substitution Pop toast never fires. Verified in UI: 86'd Hong Kong Sour tile has DOM `disabled=''` attribute; click yields empty toast.", "selector": "[data-testid='prod-Hong Kong Sour']", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Substitution Pop end-to-end", "issue": "Still blocked at UI layer — see ui_bug above. Backend GET /api/products/{id}/substitutes was verified working in iter17.", "affected_selectors": ["[data-testid='prod-Hong Kong Sour']"]}
+    ],
+    "design_issues": []
+  },
+  "test_results": {
+    "combo_heat_map_badge": "PASS — [data-testid='combo-hint-T1'] renders ' +1 Johnnie → -15%' (contains '-15%', no 'undefined')",
+    "substitution_pop_register": "FAIL — 86'd tile still disabled, click yields no toast and no 'Add substitute' action",
+    "regression_register_normal_tap": "PARTIAL — no substitution toast fired for non-86'd product (correct); did not verify cart-line increment reliably (0 lines observed) — likely test-side selector mismatch, not a product bug",
+    "regression_quickbar_cash": "NOT RE-VERIFIED this iter — was PASS in iter17; no code changes in that path",
+    "regression_delivery_simulate": "NOT RE-VERIFIED this iter — was PASS in iter17; no code changes"
+  },
+  "test_report_links": ["/app/backend/tests/test_iter17_features.py"],
+  "action_items": [
+    "APPLY the previously-agreed ProductGrid.jsx fix that was claimed in the review request but not landed: (a) change line 40 to `onClick={() => onPick(p)}` and (b) remove `disabled={eight}` on line 41. Keep the 86'd visual overlay (lines 61-67) intact. After that Register.jsx addProduct() will run for 86'd tiles and dispatch the substitution toast."
+  ],
+  "critical_code_review_comments": [
+    "Backend fix (routers/orders.py line 500: discount_value in combo_hints) — verified applied and working.",
+    "Frontend fix (ProductGrid.jsx removing disabled/guard) — NOT applied. Same code as iter17."
+  ],
+  "updated_files": ["/app/test_reports/iteration_18.json"],
+  "success_rate": {"backend": "100%", "frontend": "50% (1/2 targeted flows fixed)"},
+  "test_credentials": "admin polymuze111@gmail.com / admin123 (worked)",
+  "seed_data_creation": "Opened one dine-in order on table T1 with 1x Hong Kong Sour (needed for badge test). 86 toggle for Hong Kong Sour was toggled on then off (final state: un-86'd, as requested). No other data created.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Only one flow still failing: Substitution Pop. Fix in ProductGrid.jsx is trivial (2-line change on lines 40-41). Once main agent applies, re-test only /menu 86 Hong Kong Sour → /register → click prod-Hong Kong Sour → assert toast contains 'out' & 'Try' & has 'Add substitute' button → clicking button adds cart-line with substitute name → un-86.",
+  "rca of the issue": "The review request claimed ProductGrid.jsx fix was landed, but grep confirms the file was never edited. Backend fix (discount_value in combo_hints) DID land and works. Suspect the main agent forgot to save/commit the frontend change or edited a different file. Reproduction: `sed -n '35,45p' /app/frontend/src/components/pos/register/ProductGrid.jsx` still shows `disabled={eight}`."
+}

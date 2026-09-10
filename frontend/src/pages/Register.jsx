@@ -194,7 +194,24 @@ export default function Register() {
     });
   };
 
-  const addProduct = (p) => {
+  const addProduct = async (p) => {
+    // Substitution Pop — check if the tapped product is out (86'd or all-kegs-blown)
+    if (p.eightysix) {
+      try {
+        const r = await api.get(`/products/${p.id}/substitutes`);
+        const subs = r.data.substitutes || [];
+        if (subs.length) {
+          toast(`${p.name} is out. Try ${subs[0].name} · HK$${subs[0].price} instead`, {
+            action: { label: "Add substitute", onClick: () => addProduct(subs[0]) },
+          });
+        } else {
+          toast.error(`${p.name} is out and no substitute available`);
+        }
+      } catch {
+        toast.error(`${p.name} is 86'd`);
+      }
+      return;
+    }
     if (p.variants?.length > 0) return setVariantModal(p);
     pushLine(p, null, [], hhPrice(p));
   };

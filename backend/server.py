@@ -179,6 +179,33 @@ async def delete_product(pid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+@api.get("/products/{pid}/substitutes")
+async def product_substitutes(pid: str, user: dict = Depends(get_current_user)):
+    """Nearest in-stock alternatives (same category, closest price). Excludes
+    86'd products AND any drink whose only tap is 'blown'. Powers the on-shelf
+    'Substitution Pop' when a keg blows mid-service."""
+    p = await db.products.find_one({"_id": _oid(pid)})
+    if not p:
+        raise HTTPException(404, "Not found")
+    kegs = await db.kegs.find().to_list(500)
+    by_prod: dict = {}
+    for k in kegs:
+        by_prod.setdefault(k.get("product_id"), []).append(k)
+    blocked = {pid_ for pid_, ks in by_prod.items() if ks and all(k.get("status") == "blown" for k in ks)}
+    same_cat = await db.products.find({
+        "category_id": p["category_id"],
+        "_id": {"$ne": _oid(pid)},
+        "eightysix": {"$ne": True},
+    }).to_list(500)
+    candidates = [c for c in same_cat if str(c["_id"]) not in blocked]
+    candidates.sort(key=lambda c: abs((c.get("price") or 0) - (p.get("price") or 0)))
+    return {
+        "target": serialize(p),
+        "blocked_reason": "eighty_sixed" if p.get("eightysix") else ("keg_blown" if pid in blocked else None),
+        "substitutes": [serialize(c) for c in candidates[:3]],
+    }
+
+
 # ===================== HAPPY HOUR =====================
 def _is_hh_active(hh: dict, now_hk: datetime) -> bool:
     if not hh.get("active", True):

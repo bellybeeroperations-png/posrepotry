@@ -61,7 +61,12 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
-## What's Implemented (v10 · Feb 2026 — Iter 14)
+## What's Implemented (v11 · Feb 2026 — Iter 17-18)
+- **Combo Heat-Map on Floorplan**: new `GET /api/floorplan/combo-hints` returns per-occupied-table hints ("+1 <product> → -<value>%/HK$"); Floorplan renders a cyan glow ring + neon badge above each hinted table.
+- **Substitution Pop**: new `GET /api/products/{pid}/substitutes` returns the 3 closest-in-price alternatives (same category, in-stock, kegs not all-blown). Register/QuickBar toasts "**<name>** is out. Try **<alt>** · HK$X" with an "Add substitute" action.
+- **Delivery Ingest** (MOCKED): `POST /api/delivery/ingest`, `POST /api/delivery/simulate`, `GET /api/delivery/inbox`. New `/delivery` page shows platform-tinted cards (foodpanda/deliveroo/keeta) with a Simulate button. Ingested orders auto-fire so they land on KDS.
+- **Bar Preauth Tab**: `POST /api/tabs/preauth` records `{customer_name, card_last4, hold_amount}` on an open order. Floorplan header "Preauth Tab" button opens the modal, then navigates to the Register.
+- **Register layout fix**: `ProductGrid.jsx` now uses `col-span-6` for the products grid so tiles have breathing room; 86'd tiles clickable (needed for Substitution Pop).
 - **Deal-Of-The-Night Rotator**: combos now carry an optional `schedule: {days, start_time, end_time}` (HK time, cross-midnight aware). `_active_combos` filters by the current window so a scheduled combo only auto-applies inside its slot. ComboEditor exposes a "Scheduled ↔ Always-on" toggle plus day chips and HH:MM inputs.
 - **Auto-Close Tabs**: `POST /api/orders/auto-close` — manager/admin only. One click batch-settles every open tab, records `payment.method` (default card) + `note`, frees tables to dirty, decrements kegs. Floorplan header ships a red `Last Call · Auto-Close` button that confirms first.
 - **Quick Bar Mode**: new `/bar` route + nav pill. Giant drink tiles show HH-discounted pricing with a `-X%` neon badge. One tap adds to a running tab; **Send & Pay Cash / Card** creates the order → auto-fires (so it lands on KDS instantly) → pays → shows the receipt modal.

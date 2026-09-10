@@ -28,7 +28,7 @@ export default function ProductGrid({ products, categories, activeCat, setActive
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 overflow-y-auto pr-1">
+      <div className="col-span-6 grid grid-cols-3 auto-rows-min gap-3 overflow-y-auto pr-1 content-start">
         {filtered.map((p) => {
           const pct = hhFor(p);
           const dp = hhPrice(p);
@@ -37,20 +37,19 @@ export default function ProductGrid({ products, categories, activeCat, setActive
             <button
               key={p.id}
               data-testid={`prod-${p.name}`}
-              onClick={() => !eight && onPick(p)}
-              disabled={eight}
-              className={`relative p-4 rounded-xl border text-left transition group ${
+              onClick={() => onPick(p)}
+              className={`relative p-4 rounded-xl border text-left transition group min-w-0 ${
                 eight
-                  ? "border-[var(--rose)]/40 bg-[var(--surface)] cursor-not-allowed opacity-50"
+                  ? "border-[var(--rose)]/40 bg-[var(--surface)] hover:border-[var(--rose)]"
                   : pct
                   ? "border-[var(--amber)]/60 bg-[var(--amber)]/5 hover:bg-[var(--amber)]/10"
                   : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--cyan)] hover:bg-[var(--surface-2)]"
               }`}
             >
-              <div className="font-display font-bold text-white leading-tight">{p.name}</div>
+              <div className="font-display font-bold text-white leading-tight truncate">{p.name}</div>
               <div className="text-xs font-mono text-[var(--muted)] mt-1 uppercase">{p.course}</div>
               {pct ? (
-                <div className="mt-2 flex items-baseline gap-2">
+                <div className="mt-2 flex items-baseline gap-2 flex-wrap">
                   <span className="font-mono font-bold text-[var(--amber)]">{fmtHKD(dp)}</span>
                   <span className="text-[10px] font-mono text-[var(--muted)] line-through">{fmtHKD(p.price)}</span>
                   <span className="text-[9px] font-mono uppercase bg-[var(--amber)] text-black px-1 rounded font-black">-{pct}%</span>

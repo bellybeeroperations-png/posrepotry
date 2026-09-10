@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from deps import db, _oid, serialize, sl
 from auth import make_current_user_dep
-from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn
+from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn, PreauthTabIn, DeliveryIngestIn
 from routers.kegs import decrement_kegs_for_order
 
 HK_TZ = ZoneInfo("Asia/Hong_Kong")
@@ -445,3 +445,191 @@ async def merge_orders(body: MergeOrdersIn, user: dict = Depends(get_current_use
             {"$set": {"status": "available", "current_order_id": None}},
         )
     return {"ok": True, "merged_into": body.target_id, "line_count": len(merged_lines), "total": totals["total"]}
+
+
+# ---------- Combo heat-map (upsell nudge) ----------
+def _potential_discount(c: dict, subtotal_hint: float) -> float:
+    if c.get("discount_type") == "percent":
+        return subtotal_hint * (c.get("discount_value", 0) / 100)
+    return c.get("discount_value", 0)
+
+
+@router.get("/floorplan/combo-hints")
+async def combo_hints(user: dict = Depends(get_current_user)):
+    """For every occupied table, list active combos where adding ONE more unit
+    of a specific product would tip the order into matching. Powers the
+    Floorplan heat-map upsell glow."""
+    combos = await _active_combos()
+    if not combos:
+        return []
+    open_orders = await db.orders.find({"status": "open"}).to_list(500)
+    prods = {str(p["_id"]): p for p in await db.products.find({"eightysix": {"$ne": True}}).to_list(2000)}
+    out = []
+    for o in open_orders:
+        if not o.get("table_id") or not o.get("lines"):
+            continue
+        hh_locked = {l.get("product_id") for l in o["lines"] if (l.get("hh_pct") or 0) > 0}
+        line_qtys: dict = {}
+        for l in o["lines"]:
+            pid = l.get("product_id")
+            if pid and pid not in hh_locked and (l.get("qty") or 0) > 0:
+                line_qtys[pid] = line_qtys.get(pid, 0) + l["qty"]
+
+        sub_now = sum(l["price"] * l["qty"] for l in o["lines"])
+        table_hints = []
+        for c in combos:
+            if _combo_matches(c, line_qtys):
+                continue  # already applied — skip
+            for pid in _combo_involved_pids(c):
+                if pid in hh_locked or pid not in prods:
+                    continue
+                trial = dict(line_qtys)
+                trial[pid] = trial.get(pid, 0) + 1
+                if _combo_matches(c, trial):
+                    p = prods[pid]
+                    price = p.get("price", 0) or 0
+                    d = _potential_discount(c, sub_now + price)
+                    table_hints.append({
+                        "combo_id": str(c["_id"]),
+                        "combo_name": c.get("name"),
+                        "product_id": pid,
+                        "product_name": p.get("name"),
+                        "product_price": price,
+                        "discount": round(d, 2),
+                        "discount_type": c.get("discount_type"),
+                        "discount_value": c.get("discount_value"),
+                        "net_gain": round(d - price, 2),  # positive if the discount beats the extra product's cost
+                    })
+                    break  # 1 hint per combo is enough
+        if table_hints:
+            table_hints.sort(key=lambda h: -h["net_gain"])
+            out.append({
+                "table_id": o["table_id"],
+                "order_id": str(o["_id"]),
+                "hints": table_hints[:3],
+            })
+    return out
+
+
+# ---------- Bar Preauth Tab ----------
+@router.post("/tabs/preauth")
+async def open_preauth_tab(body: PreauthTabIn, user: dict = Depends(get_current_user)):
+    """Card-on-file style tab. Records `preauth` block; auto-close will settle it
+    using the same card_last4."""
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "order_type": "dine_in" if body.table_id else "pick_up",
+        "table_id": body.table_id,
+        "area_id": None,
+        "member_id": None,
+        "guests": max(1, body.party_size),
+        "server_id": user["id"],
+        "lines": [],
+        "discount_type": "none",
+        "discount_value": 0.0,
+        "service_charge_pct": 10.0,
+        "notes": f"Preauth · {body.customer_name} · card ****{body.card_last4}",
+        "preauth": {
+            "customer_name": body.customer_name,
+            "card_last4": body.card_last4,
+            "hold_amount": body.hold_amount,
+            "opened_at": now,
+        },
+        "status": "open",
+        "subtotal": 0.0, "discount": 0.0, "combo_discount": 0.0,
+        "combos_applied": [], "hh_locked_product_ids": [], "combo_locked_product_ids": [],
+        "service_charge": 0.0, "total": 0.0,
+        "opened_at": now, "closed_at": None,
+    }
+    r = await db.orders.insert_one(doc)
+    order_id = str(r.inserted_id)
+    if body.table_id:
+        await db.tables.update_one(
+            {"_id": _oid(body.table_id)},
+            {"$set": {"status": "occupied", "current_order_id": order_id}},
+        )
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+# ---------- Delivery Ingest (Foodpanda / Deliveroo / KeeTa) ----------
+@router.post("/delivery/ingest")
+async def ingest_delivery(body: DeliveryIngestIn, user: dict = Depends(get_current_user)):
+    """MOCKED — accepts a delivery-platform webhook payload and turns it into
+    an auto-fired KDS order. Real webhooks would sign requests; here we trust
+    authenticated staff / a demo simulator."""
+    ids = [_oid(i.product_id) for i in body.items]
+    prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": ids}}).to_list(500)}
+    now = datetime.now(timezone.utc).isoformat()
+    lines = []
+    for item in body.items:
+        p = prods.get(item.product_id)
+        if not p:
+            continue
+        lines.append({
+            "product_id": str(p["_id"]),
+            "name": p["name"],
+            "price": p["price"],
+            "qty": item.qty,
+            "variant": None, "modifiers": [],
+            "course": p.get("course", "main"),
+            "held": False, "notes": item.notes or "",
+            "hh_pct": 0.0, "seat": 1,
+            "fired_at": now,  # auto-fire so it lands on KDS instantly
+        })
+    if not lines:
+        raise HTTPException(400, "No valid products in payload")
+    combos = await _active_combos()
+    totals = _compute_totals(lines, "none", 0.0, 0.0, combos)  # no service charge for delivery
+    doc = {
+        "order_type": "delivery",
+        "table_id": None, "area_id": None,
+        "member_id": None, "guests": 1, "server_id": user["id"],
+        "lines": lines,
+        "discount_type": "none", "discount_value": 0.0,
+        "service_charge_pct": 0.0,
+        "notes": f"{body.platform.upper()} #{body.external_id} · {body.customer_name}",
+        "delivery": {
+            "platform": body.platform,
+            "external_id": body.external_id,
+            "customer_name": body.customer_name,
+            "customer_phone": body.customer_phone,
+            "fee": body.fee,
+            "ingested_at": now,
+        },
+        **totals,
+        "status": "open",
+        "opened_at": now, "closed_at": None,
+    }
+    r = await db.orders.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+@router.post("/delivery/simulate")
+async def simulate_delivery(user: dict = Depends(get_current_user)):
+    """Demo helper — creates a fake incoming delivery order."""
+    import random
+    platforms = ["foodpanda", "deliveroo", "keeta"]
+    names = ["Chan Ka Ming", "Wong Wai", "Li Ho Yan", "Tang Sze Man", "Cheung Wing"]
+    prods = await db.products.find({"eightysix": {"$ne": True}, "kind": "food"}).to_list(500)
+    if not prods:
+        raise HTTPException(400, "No food products available")
+    picks = random.sample(prods, min(3, len(prods)))
+    from models import DeliveryLineIn as _DL
+    body = DeliveryIngestIn(
+        platform=random.choice(platforms),
+        external_id=f"SIM-{int(datetime.now(timezone.utc).timestamp())}",
+        customer_name=random.choice(names),
+        customer_phone="+852 9***",
+        items=[_DL(product_id=str(p["_id"]), qty=random.randint(1, 2)) for p in picks],
+        fee=15.0,
+    )
+    return await ingest_delivery(body, user)
+
+
+@router.get("/delivery/inbox")
+async def delivery_inbox(user: dict = Depends(get_current_user)):
+    """Every open delivery order (any platform), newest first."""
+    orders = await db.orders.find({"order_type": "delivery", "delivery": {"$exists": True}}).sort("opened_at", -1).to_list(200)
+    return sl(orders)
