@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 5 regression PASSED — code-review fixes verified with no functional regressions. Backend: 7 new pytest cases (test_iteration5.py) + 10 iter4 regression tests all pass (17/17). Verified (1) _compute_totals initialises discount=0.0 up front — empty lines returns subtotal/discount/combo_discount/service/total all 0; discount_type='none' with non-zero discount_value leaves discount=0. (2) pay_order initialises change=0.0 — method='wallet' returns 200 with payment.change==0 and status flips to 'paid'; method='card' same. (3) public_menu with `t = None` init — invalid OID and missing OID both correctly return 404 (not 500). Frontend: Playwright verified blob-URL print helper openPrintableWindow across two of three surfaces: (a) /shift btn-x-report opens popup URL starting with 'blob:https://...' containing 'X REPORT · MID-SHIFT' + 'TOTAL REVENUE' + HK · BAR header, (b) Floorplan → QR modal → qr-print opens popup URL starting with 'blob:' containing 'SCAN TO VIEW OUR MENU' + api.qrserver.com src. document.write is absent from loaded page HTML (only occurs as comment in printable.js source). Receipt.jsx uses identical helper — same code path as verified surfaces.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/pytest/iter5.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "printable.js openPrintableWindow uses URL.createObjectURL(Blob) + window.open — correct XSS-hardened replacement for document.write. Note: pop-up blockers may return null w; helper already null-guards. setTimeout(revokeObjectURL, 60000) is reasonable but could leak if user keeps the tab open past 60s and hits browser Print again (URL becomes invalid). Not a blocker.",
+    "server.py pay_order: max(change, 0) means over-payment (e.g., cash>total) yields correct change; under-payment for split raises 400 but for card/wallet/octopus no validation exists — a wallet payment with amount < total will silently succeed with change=negative→clamped to 0. Business logic decision, not a regression.",
+    "public_menu: `t = None` init is defensive but the try/except immediately catches _oid() ObjectId errors and raises 404 — the `t = None` line is technically unreachable-effect (t is always reassigned or exception raised before use). Harmless but dead-defensive.",
+    "KDS.jsx/Waitlist.jsx/Floorplan.jsx useCallback memoisation looks correct. Floorplan activeArea polling isolated to its own useEffect with [activeArea] dep — no stale closure issue.",
+    "Receipt.jsx html builder uses escapeHtml on line names, modifiers, and memberName — good. Shift.jsx reportHtml does NOT escape s.user_name or s.role — if a staff name contains HTML it'd be injected into the print window. Low risk (staff seeded/admin-managed) but worth escaping for parity."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration5.py", "/app/test_reports/iteration_5.json"],
+  "success_rate": {"backend": "100% (17/17: 7 new iter5 + 10 iter4 regression)", "frontend": "100% (Shift X-report blob, QR print blob, no document.write in shipped HTML)"},
+  "test_credentials": "Sourced from /app/memory/test_credentials.md — admin polymuze111@gmail.com / admin123.",
+  "seed_data_creation": "Created 4 draft orders (voided after use) in backend tests. Frontend: clocked in as admin for X-report test (still open — main agent can clock out via Shift page or ignore, does not affect functionality).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression cmd: `REACT_APP_BACKEND_URL=https://hk-bar-pos-pro.preview.emergentagent.com pytest -o addopts= backend/tests/test_iteration5.py backend/tests/test_iteration4.py -v`. For blob-URL Playwright assertions, use `context.expect_page()` around the click — popup.url starts with 'blob:' and popup.content() gives the printable HTML. The Sign In button on /login is not type='submit' — use get_by_role('button', name='Sign In'). Admin may be left clocked-in on shift; check /api/shifts/current and clock-out if needed.",
+  "rca of the issue": "N/A — no issues found. All 3 defensive var inits and blob-URL print helper working as specified."
+}

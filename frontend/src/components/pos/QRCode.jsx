@@ -1,5 +1,6 @@
 import { X, Printer, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { openPrintableWindow } from "@/lib/printable";
 
 /** Generates a QR image via api.qrserver.com — no npm dep needed. */
 export function QRCode({ table, url, onClose }) {
@@ -11,8 +12,7 @@ export function QRCode({ table, url, onClose }) {
     toast.success("Link copied");
   };
   const printQR = () => {
-    const w = window.open("", "qr", "width=420,height=600");
-    w.document.write(`<!doctype html><html><head><title>Table ${table.name} · Menu QR</title>
+    const html = `<!doctype html><html><head><title>Table ${table.name} · Menu QR</title>
 <style>body{font-family:'JetBrains Mono',monospace;text-align:center;padding:20px;color:#000;background:#fff}
 h1{font-size:28px;margin:0;letter-spacing:.15em}
 h2{font-size:12px;letter-spacing:.3em;margin:2px 0 20px;color:#666}
@@ -27,9 +27,8 @@ img{margin:16px 0;border:6px solid #000}
 <img src="${qr}" alt="qr" width="280" height="280"/>
 <div class="s">Order at the bar or ask your server</div>
 <div class="url">${menuUrl}</div>
-</body></html>`);
-    w.document.close(); w.focus();
-    setTimeout(() => w.print(), 500);
+</body></html>`;
+    openPrintableWindow(html, "qr");
   };
 
   return (

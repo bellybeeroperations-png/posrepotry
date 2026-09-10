@@ -1,16 +1,11 @@
 import { fmtHKD } from "@/lib/api";
 import { X, Printer, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { openPrintableWindow } from "@/lib/printable";
 
 export default function Receipt({ order, memberName, onClose }) {
   const html = () => receiptHtml(order, memberName);
-  const doPrint = () => {
-    const w = window.open("", "receipt", "width=380,height=700");
-    w.document.write(html());
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
-  };
+  const doPrint = () => openPrintableWindow(html(), "receipt");
   const doEmail = () => {
     // MOCKED: pretend we sent it
     toast.success(memberName ? `Receipt emailed to ${memberName}` : "Receipt queued for email");

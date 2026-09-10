@@ -313,6 +313,7 @@ async def delete_member(mid: str, user: dict = Depends(get_current_user)):
 # ===================== ORDERS =====================
 def _compute_totals(lines, discount_type, discount_value, service_charge_pct, combos=None):
     subtotal = sum(l["price"] * l["qty"] for l in lines)
+    discount = 0.0
     combo_discount = 0.0
     combos_applied = []
     if combos:
@@ -338,8 +339,6 @@ def _compute_totals(lines, discount_type, discount_value, service_charge_pct, co
         discount = subtotal * (discount_value / 100.0)
     elif discount_type == "cash":
         discount = min(discount_value, subtotal)
-    else:
-        discount = 0.0
     net = max(0.0, subtotal - discount - combo_discount)
     service = round(net * (service_charge_pct / 100.0), 2)
     total = round(net + service, 2)
@@ -446,13 +445,14 @@ async def pay_order(oid: str, body: PaymentIn, user: dict = Depends(get_current_
     o = await db.orders.find_one({"_id": _oid(oid)})
     if not o:
         raise HTTPException(404, "Not found")
+    change = 0.0
     if body.method == "split":
         paid = sum((s.get("amount") or 0) for s in body.splits)
         if paid + 0.01 < o["total"]:
             raise HTTPException(400, f"Split total HK${paid:.2f} is less than order total HK${o['total']:.2f}")
         change = round(paid - o["total"], 2)
-    else:
-        change = round(body.amount - o["total"], 2) if body.method == "cash" else 0.0
+    elif body.method == "cash":
+        change = round(body.amount - o["total"], 2)
     payment = {
         "method": body.method, "amount": body.amount, "tip": body.tip,
         "splits": body.splits, "change": max(change, 0),
@@ -782,6 +782,7 @@ async def cancel_reservation(rid: str, user: dict = Depends(get_current_user)):
 # ===================== PUBLIC (no auth) =====================
 @api.get("/public/menu/{table_id}")
 async def public_menu(table_id: str):
+    t = None
     try:
         t = await db.tables.find_one({"_id": _oid(table_id)})
     except Exception:

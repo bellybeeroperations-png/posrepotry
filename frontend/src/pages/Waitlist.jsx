@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Plus, Phone, MessageSquare, Trash2, ChevronRight, Users as UsersIcon, Clock } from "lucide-react";
@@ -11,13 +11,13 @@ export default function Waitlist() {
   const [wait, setWait] = useState(15);
   const [now, setNow] = useState(Date.now());
 
-  const load = async () => setRows((await api.get("/waitlist")).data);
+  const load = useCallback(async () => setRows((await api.get("/waitlist")).data), []);
   useEffect(() => {
     load();
     const t = setInterval(load, 10000);
     const c = setInterval(() => setNow(Date.now()), 30000);
     return () => { clearInterval(t); clearInterval(c); };
-  }, []);
+  }, [load]);
 
   const add = async () => {
     if (!name || !phone) return toast.error("Name & phone required");

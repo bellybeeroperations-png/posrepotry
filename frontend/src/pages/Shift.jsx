@@ -3,6 +3,7 @@ import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { LogIn, LogOut, Printer, Wallet, Users as UsersIcon, Receipt as ReceiptIcon } from "lucide-react";
+import { openPrintableWindow } from "@/lib/printable";
 
 export default function Shift() {
   const { user } = useAuth();
@@ -31,11 +32,7 @@ export default function Shift() {
   };
 
   const printReport = (report, type) => {
-    const w = window.open("", "shift", "width=380,height=700");
-    w.document.write(reportHtml(report, type, user?.name));
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
+    openPrintableWindow(reportHtml(report, type, user?.name), "shift");
   };
 
   return (
@@ -142,7 +139,8 @@ function Kpi({ label, value, icon: Icon, color = "#FFB800", testid }) {
 
 function reportHtml(r, type, whoami) {
   const s = r.shift;
-  const rows = (r.by_payment || []).map(p => `<tr><td>${p.method.toUpperCase()}</td><td class="r">HK$ ${p.amount.toFixed(2)}</td></tr>`).join("");
+  const esc = (v) => (v == null ? "" : String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])));
+  const rows = (r.by_payment || []).map(p => `<tr><td>${esc(p.method).toUpperCase()}</td><td class="r">HK$ ${p.amount.toFixed(2)}</td></tr>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"/><title>${type} Report</title>
 <style>
 body{font-family:'JetBrains Mono',monospace;font-size:12px;color:#000;background:#fff;padding:12px;width:320px}
@@ -161,10 +159,10 @@ td{padding:2px 0}
 <h2>${type} REPORT · ${type === "X" ? "MID-SHIFT" : "END-OF-SHIFT"}</h2>
 <div class="sub center">${new Date().toLocaleString("en-HK",{timeZone:"Asia/Hong_Kong"})}</div>
 <hr/>
-<div>Staff: <b>${s.user_name}</b> <span class="sub">(${s.role})</span></div>
+<div>Staff: <b>${esc(s.user_name)}</b> <span class="sub">(${esc(s.role)})</span></div>
 <div>In:  ${new Date(s.clock_in).toLocaleString("en-HK",{timeZone:"Asia/Hong_Kong"})}</div>
 <div>Out: ${s.clock_out ? new Date(s.clock_out).toLocaleString("en-HK",{timeZone:"Asia/Hong_Kong"}) : "— live —"}</div>
-<div class="sub">Printed by: ${whoami || ""}</div>
+<div class="sub">Printed by: ${esc(whoami || "")}</div>
 <hr/>
 <table>
 <tr><td>Orders</td><td class="r"><b>${r.orders}</b></td></tr>

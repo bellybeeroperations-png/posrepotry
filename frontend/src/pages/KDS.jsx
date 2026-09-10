@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { Flame, Check, ChefHat, Wine } from "lucide-react";
@@ -26,15 +26,18 @@ function ageColor(min) {
 export default function KDS() {
   const [station, setStation] = useState("all");
   const [tickets, setTickets] = useState([]);
-  const [_, setTick] = useState(0);
+  const [, setTick] = useState(0);
 
-  const load = () => api.get("/kds", { params: { station } }).then((r) => setTickets(r.data));
-  useEffect(() => { load(); }, [station]);
+  const load = useCallback(
+    () => api.get("/kds", { params: { station } }).then((r) => setTickets(r.data)),
+    [station],
+  );
   useEffect(() => {
+    load();
     const t = setInterval(load, 4000);
-    const c = setInterval(() => setTick(x => x + 1), 1000);
+    const c = setInterval(() => setTick((x) => x + 1), 1000);
     return () => { clearInterval(t); clearInterval(c); };
-  }, [station]);
+  }, [load]);
 
   const bump = async (t) => {
     try {

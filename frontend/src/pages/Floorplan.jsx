@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
@@ -34,28 +34,28 @@ export default function Floorplan() {
   const [qrTable, setQrTable] = useState(null);
   const nav = useNavigate();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const a = (await api.get("/areas")).data;
     setAreas(a);
-    if (!activeArea && a[0]) setActiveArea(a[0].id);
-  };
-  useEffect(() => { load(); }, []);
+    setActiveArea((cur) => cur || a[0]?.id || null);
+  }, []);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    api.get("/happy-hours/active").then((r) => setActiveHH(r.data.active || []));
-    const hh = setInterval(() => api.get("/happy-hours/active").then((r) => setActiveHH(r.data.active || [])), 60000);
+    const loadHH = () => api.get("/happy-hours/active").then((r) => setActiveHH(r.data.active || []));
+    loadHH();
+    const hh = setInterval(loadHH, 60000);
     const clk = setInterval(() => setNow(new Date()), 30000);
     return () => { clearInterval(hh); clearInterval(clk); };
   }, []);
   useEffect(() => {
     if (!activeArea) return;
-    api.get("/tables", { params: { area_id: activeArea } }).then((r) => setTables(r.data));
-    const t = setInterval(() => {
-      api.get("/tables", { params: { area_id: activeArea } }).then((r) => setTables(r.data));
-    }, 5000);
+    const fetchArea = () => api.get("/tables", { params: { area_id: activeArea } }).then((r) => setTables(r.data));
+    fetchArea();
+    const t = setInterval(fetchArea, 5000);
     return () => clearInterval(t);
   }, [activeArea]);
 
-  // ---- business KPIs across ALL tables (fetch other areas silently) ----
+  // ---- business KPIs across ALL tables ----
   const [allTables, setAllTables] = useState([]);
   useEffect(() => {
     const fetchAll = () => api.get("/tables").then((r) => setAllTables(r.data));
