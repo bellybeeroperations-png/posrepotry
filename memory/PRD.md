@@ -61,7 +61,19 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
-## What's Implemented (v13 · Feb 2026 — Iter 20 · Code Review)
+## What's Implemented (v14 · Feb 2026 — Iter 21)
+- **Combo Heat-Map on Register**: new `RegisterUpsellStrip` component renders a cyan pulse-dot strip above the ProductGrid with the top-3 combos exactly one product-tap away from firing. Chips read `+1 <Product> → -X% (Combo)` with a net-gain badge; tapping a chip adds the product and logs an `accepted` nudge.
+- **Live Upsell Nudge Log**: new backend collection `upsell_nudges` + three endpoints:
+  - `POST /api/upsell/log` — record `shown | accepted | dismissed` (auto-dedupes `shown` within 60s per server+combo+product+order).
+  - `GET  /api/upsell/leaderboard?window_hours=168` — per-server rollup: shown, accepted, conversion %, revenue_lifted.
+  - `GET  /api/upsell/feed?limit=50` — reverse-chronological live event stream.
+- **/upsell page + nav "Nudges"**: KPIs (Shown / Accepted / Conversion % / Revenue Lifted), a 7-day server leaderboard, and a live feed that refreshes every 12s. RegisterUpsellStrip now fires `shown` on hint render + `accepted` on chip tap.
+- **Component Split Sprint** (targeted):
+  - `TableCard` extracted from Floorplan.jsx → `/app/frontend/src/components/pos/floorplan/TableCard.jsx`
+  - `ResCountdown` extracted → `/app/frontend/src/components/pos/floorplan/ResCountdown.jsx`
+  - `ComboScheduleFields` extracted from ComboEditor.jsx → `/app/frontend/src/components/pos/combo/ComboScheduleFields.jsx`
+  - `RegisterUpsellStrip` new self-contained component with hint calc + logging
+  - Deferred (too risky mid-session, tracked in ROADMAP): CartTicket into 4 further sub-components + Register/Floorplan hook extraction.
 - **Security**: moved test admin credentials out of `tests/test_iter17_features.py` into env vars (`TEST_ADMIN_EMAIL`, `TEST_ADMIN_PASSWORD`) with sane defaults for local dev.
 - **Error visibility**: replaced 3 silent empty-catch blocks with `console.error/warn` — `AuthContext` /me refresh, `AuthContext` logout, `printable.js` print-blocked branch.
 - **State correctness**: swapped React `key={i}` index-as-key anti-patterns for stable keys in `Receipt.jsx` (line items + split rows), `editors.jsx` (variant/modifier rows + HH day chips), `PaymentModal.jsx` (split rows), `ComboEditor.jsx` (slots).

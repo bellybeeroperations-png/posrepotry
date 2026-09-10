@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import ProductGrid from "@/components/pos/register/ProductGrid";
 import CartTicket from "@/components/pos/register/CartTicket";
+import RegisterUpsellStrip from "@/components/pos/register/RegisterUpsellStrip";
 import VariantModal from "@/components/pos/register/VariantModal";
 import PaymentModal from "@/components/pos/register/PaymentModal";
 import Receipt from "@/components/pos/Receipt";
@@ -296,6 +297,11 @@ export default function Register() {
           <span className="ml-auto text-[var(--muted)]">Best-of applied per product</span>
         </div>
       )}
+
+      <RegisterUpsellStrip
+        order={order} totals={totals} combos={combos} products={products}
+        onAdd={addProduct}
+      />
 
       <ProductGrid
         products={products} categories={categories}

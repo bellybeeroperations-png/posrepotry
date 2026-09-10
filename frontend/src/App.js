@@ -18,6 +18,7 @@ import Waitlist from "@/pages/Waitlist";
 import Kegs from "@/pages/Kegs";
 import QuickBar from "@/pages/QuickBar";
 import Delivery from "@/pages/Delivery";
+import UpsellLog from "@/pages/UpsellLog";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/kegs" element={<Protected><Kegs /></Protected>} />
           <Route path="/bar" element={<Protected><QuickBar /></Protected>} />
           <Route path="/delivery" element={<Protected><Delivery /></Protected>} />
+          <Route path="/upsell" element={<Protected><UpsellLog /></Protected>} />
           <Route path="*" element={<Navigate to="/floorplan" replace />} />
         </Routes>
       </BrowserRouter>

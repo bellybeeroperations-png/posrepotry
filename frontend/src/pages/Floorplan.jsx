@@ -6,6 +6,7 @@ import { Plus, Trash2, Move, Edit3, Check, Users as UsersIcon, Sparkles, Clock, 
 import { ReservationModal, TableActionModal } from "@/components/pos/Reservations";
 import { QRCode as QRModal } from "@/components/pos/QRCode";
 import PreauthModal from "@/components/pos/PreauthModal";
+import TableCard from "@/components/pos/floorplan/TableCard";
 
 const STATUS_LABELS = {
   available: "Available",
@@ -298,56 +299,10 @@ export default function Floorplan() {
           onMouseLeave={onUp}
           data-testid="floorplan-canvas"
         >
-          {tables.map((t) => {
-            const hint = comboHints[t.id]?.[0];
-            return (
-            <div
-              key={t.id}
-              data-testid={`table-${t.name}`}
-              onMouseDown={(e) => onDown(e, t)}
-              onClick={() => openTable(t)}
-              className={`absolute border-2 ${STATUS_COLORS[t.status]} ${
-                t.shape === "circle" ? "rounded-full" : "rounded-lg"
-              } select-none flex flex-col items-center justify-center p-2 transition-transform hover:scale-105 ${
-                editMode ? "cursor-move" : "cursor-pointer"
-              } ${hint ? "ring-2 ring-[var(--cyan)] ring-offset-2 ring-offset-[var(--surface)]" : ""}`}
-              style={{
-                left: t.x, top: t.y, width: t.width, height: t.height,
-                boxShadow: hint ? "0 0 24px rgba(0,242,254,0.55)" : undefined,
-              }}
-            >
-              <div className="font-display font-black text-lg">{t.name}</div>
-              <div className="flex items-center gap-1 text-[10px] font-mono opacity-80">
-                <UsersIcon size={10} /> {t.seats}
-              </div>
-              {t.current_order && (
-                <div className="font-mono text-[11px] font-bold mt-0.5">
-                  {fmtHKD(t.current_order.total)}
-                </div>
-              )}
-              {hint && (
-                <div data-testid={`combo-hint-${t.name}`}
-                  className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-[var(--cyan)] text-black text-[9px] font-mono font-black flex items-center gap-0.5 shadow-lg">
-                  <TrendingUp size={9} /> +1 {hint.product_name?.split(" ")[0]} → -{hint.discount_type === "percent" ? `${hint.discount_value}%` : fmtHKD(hint.discount)}
-                </div>
-              )}
-              {t.reservation && t.status === "reserved" && (
-                <div className="text-[9px] font-mono opacity-80 leading-tight text-center px-1">
-                  <div className="truncate max-w-[80px]">{t.reservation.guest_name}</div>
-                  <ResCountdown iso={t.reservation.reserved_for} />
-                </div>
-              )}
-              {editMode && (
-                <button
-                  data-testid={`btn-del-${t.name}`}
-                  onClick={(e) => { e.stopPropagation(); delTable(t.id); }}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-[var(--rose)] text-white rounded-full flex items-center justify-center"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-          );})}
+          {tables.map((t) => (
+            <TableCard key={t.id} table={t} hint={comboHints[t.id]?.[0]}
+              editMode={editMode} onDown={onDown} openTable={openTable} delTable={delTable} />
+          ))}
           {editMode && (
             <div className="absolute bottom-4 left-4 bg-black/70 px-3 py-2 rounded-lg text-xs font-mono flex items-center gap-2">
               <Move size={14} /> Drag tables to reposition

@@ -255,6 +255,20 @@ class PreauthCompleteIn(BaseModel):
     setup_intent_id: str
 
 
+class UpsellNudgeIn(BaseModel):
+    """A combo-heat-map hint event — shown when the badge renders, accepted
+    when the server taps it, dismissed when the underlying combo fires without
+    this hint being used."""
+    order_id: Optional[str] = None
+    table_id: Optional[str] = None
+    combo_name: str
+    product_id: str
+    product_name: str
+    potential_discount: float = 0.0
+    source: Literal["floorplan", "register", "quickbar"] = "register"
+    status: Literal["shown", "accepted", "dismissed"] = "shown"
+
+
 # -------- PIN Verify --------
 class PinVerifyIn(BaseModel):
     pin: str

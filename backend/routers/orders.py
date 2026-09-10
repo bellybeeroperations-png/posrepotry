@@ -10,7 +10,7 @@ Exclusivity rule (per user, Iter 13):
       • Order-level manual discount (percent or cash)
     Precedence when there's a conflict is: HH  ->  Combo  ->  Order-level discount.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from deps import db, _oid, serialize, sl
 from auth import make_current_user_dep
-from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn, PreauthTabIn, DeliveryIngestIn, SetupIntentIn, PreauthCompleteIn
+from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn, PreauthTabIn, DeliveryIngestIn, SetupIntentIn, PreauthCompleteIn, UpsellNudgeIn
 from routers.kegs import decrement_kegs_for_order
 
 HK_TZ = ZoneInfo("Asia/Hong_Kong")
@@ -685,3 +685,66 @@ async def delivery_inbox(user: dict = Depends(get_current_user)):
     """Every open delivery order (any platform), newest first."""
     orders = await db.orders.find({"order_type": "delivery", "delivery": {"$exists": True}}).sort("opened_at", -1).to_list(200)
     return sl(orders)
+
+
+# ---------- Upsell nudge log (live heat-map coaching) ----------
+@router.post("/upsell/log")
+async def log_upsell(body: UpsellNudgeIn, user: dict = Depends(get_current_user)):
+    """Record a heat-map hint event. Dedupe 'shown' pings within 60s per
+    (server, combo, product, order) so the poller doesn't spam the feed."""
+    now = datetime.now(timezone.utc).isoformat()
+    doc = body.model_dump()
+    doc.update({
+        "server_id": user["id"],
+        "server_name": user.get("name") or user.get("email"),
+        "ts": now,
+    })
+    if body.status == "shown":
+        recent_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+        dup = await db.upsell_nudges.find_one({
+            "server_id": user["id"],
+            "combo_name": body.combo_name,
+            "product_id": body.product_id,
+            "order_id": body.order_id,
+            "status": "shown",
+            "ts": {"$gte": recent_cutoff},
+        })
+        if dup:
+            return {"ok": True, "deduped": True}
+    r = await db.upsell_nudges.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return serialize(doc)
+
+
+@router.get("/upsell/feed")
+async def upsell_feed(limit: int = 50, user: dict = Depends(get_current_user)):
+    docs = await db.upsell_nudges.find().sort("ts", -1).to_list(limit)
+    return sl(docs)
+
+
+@router.get("/upsell/leaderboard")
+async def upsell_leaderboard(window_hours: int = 168, user: dict = Depends(get_current_user)):
+    """Aggregate the last N hours (default 7d) by server: shown, accepted,
+    conversion %, revenue lifted."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
+    docs = await db.upsell_nudges.find({"ts": {"$gte": cutoff}}).to_list(5000)
+    by_server: dict = {}
+    for d in docs:
+        row = by_server.setdefault(d["server_id"], {
+            "server_id": d["server_id"],
+            "server_name": d.get("server_name", "—"),
+            "shown": 0, "accepted": 0, "dismissed": 0, "revenue_lifted": 0.0,
+        })
+        s = d.get("status", "shown")
+        if s in row:
+            row[s] += 1
+        if s == "accepted":
+            row["revenue_lifted"] += d.get("potential_discount", 0)
+    out = []
+    for r in by_server.values():
+        shown = r["shown"] or 1
+        r["conversion"] = round(100.0 * r["accepted"] / shown, 1)
+        r["revenue_lifted"] = round(r["revenue_lifted"], 2)
+        out.append(r)
+    out.sort(key=lambda r: (-r["accepted"], -r["revenue_lifted"]))
+    return out
