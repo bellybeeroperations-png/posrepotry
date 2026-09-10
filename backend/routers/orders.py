@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from deps import db, _oid, serialize, sl
 from auth import make_current_user_dep
-from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn, PreauthTabIn, DeliveryIngestIn
+from models import OrderIn, OrderUpdate, PaymentIn, AutoCloseIn, MoveLineIn, MergeOrdersIn, PreauthTabIn, DeliveryIngestIn, SetupIntentIn, PreauthCompleteIn
 from routers.kegs import decrement_kegs_for_order
 
 HK_TZ = ZoneInfo("Asia/Hong_Kong")
@@ -553,6 +553,58 @@ async def open_preauth_tab(body: PreauthTabIn, user: dict = Depends(get_current_
 
 
 # ---------- Delivery Ingest (Foodpanda / Deliveroo / KeeTa) ----------
+import os as _os
+try:
+    import stripe as _stripe
+    _stripe.api_key = _os.environ.get("STRIPE_SECRET_KEY") or _os.environ.get("STRIPE_API_KEY") or "sk_test_emergent"
+except ImportError:
+    _stripe = None
+
+
+@router.post("/tabs/preauth/setup-intent")
+async def create_preauth_setup_intent(body: SetupIntentIn, user: dict = Depends(get_current_user)):
+    """Create a Stripe SetupIntent for card-on-file preauth. Returns the
+    client_secret the frontend hands to Stripe Elements to confirm off-session
+    payment method storage. Later, /pay uses the stored payment_method id."""
+    if not _stripe:
+        raise HTTPException(500, "Stripe SDK not installed")
+    intent = _stripe.SetupIntent.create(
+        usage="off_session",
+        payment_method_types=["card"],
+        metadata={"customer_name": body.customer_name, **body.metadata},
+    )
+    return {
+        "client_secret": intent.client_secret,
+        "setup_intent_id": intent.id,
+        "publishable_key": _os.environ.get("STRIPE_PUBLISHABLE_KEY", ""),
+    }
+
+
+@router.post("/tabs/preauth/complete")
+async def complete_preauth(body: PreauthCompleteIn, user: dict = Depends(get_current_user)):
+    """After Stripe Elements confirms the SetupIntent, the frontend calls this
+    to attach the real payment_method + card details onto the preauth order."""
+    if not _stripe:
+        raise HTTPException(500, "Stripe SDK not installed")
+    si = _stripe.SetupIntent.retrieve(body.setup_intent_id, expand=["payment_method"])
+    pm = si.payment_method
+    card = getattr(pm, "card", None) if pm else None
+    if not card:
+        raise HTTPException(400, "SetupIntent has no confirmed card")
+    await db.orders.update_one(
+        {"_id": _oid(body.order_id)},
+        {"$set": {
+            "preauth.stripe_setup_intent_id": si.id,
+            "preauth.stripe_payment_method_id": pm.id,
+            "preauth.card_last4": card.last4,
+            "preauth.card_brand": card.brand,
+            "preauth.card_exp": f"{card.exp_month:02d}/{card.exp_year % 100:02d}",
+            "preauth.status": si.status,
+        }},
+    )
+    return {"ok": True, "card_last4": card.last4, "brand": card.brand}
+
+
 @router.post("/delivery/ingest")
 async def ingest_delivery(body: DeliveryIngestIn, user: dict = Depends(get_current_user)):
     """MOCKED — accepts a delivery-platform webhook payload and turns it into

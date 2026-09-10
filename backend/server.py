@@ -342,10 +342,16 @@ async def reports_summary(user: dict = Depends(get_current_user)):
     total_orders = len(paid)
     avg_ticket = total_revenue / total_orders if total_orders else 0
 
+    # Delivery Fee Split — net out platform fees so P&L is clean
+    delivery_fees = sum((o.get("delivery") or {}).get("fee", 0) or 0 for o in paid if o.get("order_type") == "delivery")
+    delivery_gross = sum(o.get("total", 0) for o in paid if o.get("order_type") == "delivery")
+    net_revenue = round(total_revenue - delivery_fees, 2)
+
     by_hour = {}
     by_cat = {}
     by_pay = {}
     by_staff = {}
+    by_platform = {}
     cats = {str(c["_id"]): c["name"] for c in await db.categories.find().to_list(500)}
     prods = {str(p["_id"]): p for p in await db.products.find().to_list(2000)}
     staff = {str(u["_id"]): u.get("name") for u in await db.users.find().to_list(200)}
@@ -370,18 +376,34 @@ async def reports_summary(user: dict = Depends(get_current_user)):
         sid = o.get("server_id")
         sname = staff.get(sid, "—")
         by_staff[sname] = by_staff.get(sname, 0) + o.get("total", 0)
+        # delivery platform breakdown (gross + fee + net)
+        if o.get("order_type") == "delivery":
+            d = o.get("delivery") or {}
+            plt = d.get("platform", "unknown")
+            row = by_platform.setdefault(plt, {"gross": 0, "fee": 0, "orders": 0})
+            row["gross"] += o.get("total", 0)
+            row["fee"] += d.get("fee", 0) or 0
+            row["orders"] += 1
 
     hour_items = sorted(by_hour.items())
     cat_items = sorted(by_cat.items(), key=lambda x: -x[1])
     staff_items = sorted(by_staff.items(), key=lambda x: -x[1])
     return {
         "total_revenue": round(total_revenue, 2),
+        "net_revenue": net_revenue,
+        "delivery_fees": round(delivery_fees, 2),
+        "delivery_gross": round(delivery_gross, 2),
         "total_orders": total_orders,
         "avg_ticket": round(avg_ticket, 2),
         "by_hour": [{"hour": hour, "revenue": round(v, 2)} for hour, v in hour_items],
         "by_category": [{"name": k, "revenue": round(v, 2)} for k, v in cat_items],
         "by_payment": [{"name": k, "revenue": round(v, 2)} for k, v in by_pay.items()],
         "by_staff": [{"name": k, "revenue": round(v, 2)} for k, v in staff_items],
+        "by_delivery_platform": [
+            {"platform": k, "gross": round(v["gross"], 2), "fee": round(v["fee"], 2),
+             "net": round(v["gross"] - v["fee"], 2), "orders": v["orders"]}
+            for k, v in by_platform.items()
+        ],
     }
 
 

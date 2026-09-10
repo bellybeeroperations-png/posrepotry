@@ -245,6 +245,16 @@ class DeliveryIngestIn(BaseModel):
     fee: float = 0.0
 
 
+class SetupIntentIn(BaseModel):
+    customer_name: str
+    metadata: dict = {}
+
+
+class PreauthCompleteIn(BaseModel):
+    order_id: str
+    setup_intent_id: str
+
+
 # -------- PIN Verify --------
 class PinVerifyIn(BaseModel):
     pin: str

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from "recharts";
-import { TrendingUp, Users, Receipt, Wallet } from "lucide-react";
+import { TrendingUp, Users, Receipt, Wallet, Truck } from "lucide-react";
 
 const COLORS = ["#00F2FE", "#FFB800", "#A855F7", "#10B981", "#F43F5E", "#06B6D4"];
+const PLATFORM_TINT = { foodpanda: "#F43F5E", deliveroo: "#10B981", keeta: "#FFB800" };
 
 export default function Reports() {
   const [data, setData] = useState(null);
@@ -13,13 +14,38 @@ export default function Reports() {
   return (
     <div>
       <h1 className="font-display text-2xl font-black mb-4">Reports & Insights</h1>
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        <Kpi label="Revenue" value={fmtHKD(data.total_revenue)} icon={Wallet} color="#00F2FE" testid="kpi-revenue" />
+      <div className="grid grid-cols-5 gap-3 mb-4">
+        <Kpi label="Gross Revenue" value={fmtHKD(data.total_revenue)} icon={Wallet} color="#00F2FE" testid="kpi-revenue" />
+        <Kpi label="Net Revenue" value={fmtHKD(data.net_revenue)} icon={Wallet} color="#10B981" testid="kpi-net-revenue"
+          sub={data.delivery_fees > 0 ? `− ${fmtHKD(data.delivery_fees)} platform fees` : "no platform fees"} />
         <Kpi label="Orders" value={data.total_orders} icon={Receipt} color="#FFB800" testid="kpi-orders" />
         <Kpi label="Avg Ticket" value={fmtHKD(data.avg_ticket)} icon={TrendingUp} color="#A855F7" testid="kpi-avg" />
         <Kpi label="Top Staff" value={data.by_staff[0]?.name || "—"} icon={Users} color="#10B981" testid="kpi-staff" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      {data.by_delivery_platform?.length > 0 && (
+        <Card title="Delivery — Fee Split" data-testid="card-delivery-split">
+          <div className="grid grid-cols-3 gap-3">
+            {data.by_delivery_platform.map((p) => (
+              <div key={p.platform} data-testid={`delivery-split-${p.platform}`}
+                className="p-3 rounded-lg border" style={{ borderColor: (PLATFORM_TINT[p.platform] || "#26334D") + "66" }}>
+                <div className="flex items-center gap-2">
+                  <Truck size={14} style={{ color: PLATFORM_TINT[p.platform] || "#94A3B8" }} />
+                  <div className="font-mono text-xs uppercase font-bold" style={{ color: PLATFORM_TINT[p.platform] || "#94A3B8" }}>
+                    {p.platform}
+                  </div>
+                  <div className="ml-auto text-[10px] font-mono text-[var(--muted)]">{p.orders} orders</div>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] font-mono">
+                  <div><div className="text-[var(--muted)]">Gross</div><div className="text-white font-bold">{fmtHKD(p.gross)}</div></div>
+                  <div><div className="text-[var(--muted)]">Fee</div><div className="text-[var(--rose)] font-bold">-{fmtHKD(p.fee)}</div></div>
+                  <div><div className="text-[var(--muted)]">Net</div><div className="text-[var(--emerald)] font-bold">{fmtHKD(p.net)}</div></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      <div className="grid grid-cols-2 gap-4 mt-4">
         <Card title="Revenue by Hour (HK)">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.by_hour}>
@@ -81,17 +107,18 @@ export default function Reports() {
   );
 }
 
-const Kpi = ({ label, value, icon: Icon, color, testid }) => (
+const Kpi = ({ label, value, icon: Icon, color, testid, sub }) => (
   <div data-testid={testid} className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
     <div className="flex items-center justify-between">
       <div className="text-[10px] font-mono uppercase text-[var(--muted)]">{label}</div>
       <Icon size={16} style={{ color }} />
     </div>
     <div className="font-display font-black text-2xl mt-1">{value}</div>
+    {sub && <div className="text-[9px] font-mono uppercase text-[var(--muted)] mt-0.5">{sub}</div>}
   </div>
 );
-const Card = ({ title, children }) => (
-  <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+const Card = ({ title, children, ...rest }) => (
+  <div {...rest} className="p-4 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
     <div className="text-xs font-mono uppercase text-[var(--muted)] mb-3">{title}</div>
     {children}
   </div>

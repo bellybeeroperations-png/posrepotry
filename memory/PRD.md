@@ -61,7 +61,10 @@ Advanced restaurant POS for a Hong Kong bar/restaurant running 11am–6am, 7 day
 - Backend: 100% pass — 18 tables, 9 categories, 23 products, 5 members seeded; order create/patch/fire/pay math verified; discount percent & cash math; void role-gating (bartender 403, manager 200); staff CRUD gating; reports summary shape
 - Frontend E2E: 100% pass — full login → floorplan → open table → add product with variant → discount 20% → save → pay cash → back to floorplan with table dirty
 
-## What's Implemented (v11 · Feb 2026 — Iter 17-18)
+## What's Implemented (v12 · Feb 2026 — Iter 19)
+- **Combo Heat-Map on QuickBar**: each drink tile shows a cyan "+1 → -X%" badge when tapping it would complete an active combo. Pure client-side calc using the cached `/api/combos` list, no extra endpoint.
+- **Delivery Fee Split**: `/api/reports/summary` now returns `net_revenue`, `delivery_fees`, `delivery_gross`, `by_delivery_platform` (gross/fee/net per platform). Reports page shows a "Net Revenue" KPI and a per-platform breakdown card (foodpanda/deliveroo/keeta tinted rows).
+- **Preauth Stripe SetupIntent** (real): `POST /api/tabs/preauth/setup-intent` creates a real Stripe SetupIntent (`usage=off_session`, test-key `sk_test_emergent`) and returns `client_secret`+`publishable_key`. `POST /api/tabs/preauth/complete` retrieves the SetupIntent post-confirmation, extracts card brand/last4/exp, and attaches them onto the preauth order. PreauthModal now has a "Create Card Hold" button; wire-up of Stripe Elements confirmation UI is scaffolded for the next iter (backend endpoints are live).
 - **Combo Heat-Map on Floorplan**: new `GET /api/floorplan/combo-hints` returns per-occupied-table hints ("+1 <product> → -<value>%/HK$"); Floorplan renders a cyan glow ring + neon badge above each hinted table.
 - **Substitution Pop**: new `GET /api/products/{pid}/substitutes` returns the 3 closest-in-price alternatives (same category, in-stock, kegs not all-blown). Register/QuickBar toasts "**<name>** is out. Try **<alt>** · HK$X" with an "Add substitute" action.
 - **Delivery Ingest** (MOCKED): `POST /api/delivery/ingest`, `POST /api/delivery/simulate`, `GET /api/delivery/inbox`. New `/delivery` page shows platform-tinted cards (foodpanda/deliveroo/keeta) with a Simulate button. Ingested orders auto-fire so they land on KDS.

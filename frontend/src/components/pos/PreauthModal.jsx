@@ -7,8 +7,23 @@ export default function PreauthModal({ table, onClose, onOpened }) {
   const [hold, setHold] = useState(500);
   const [size, setSize] = useState(table?.seats || 2);
   const [busy, setBusy] = useState(false);
+  const [stripeReady, setStripeReady] = useState(false);
+  const [stripeInfo, setStripeInfo] = useState(null);
 
   const canOpen = name.trim() && /^\d{4}$/.test(last4);
+
+  const createStripeHold = async () => {
+    setBusy(true);
+    try {
+      const r = await (await import("@/lib/api")).api.post("/tabs/preauth/setup-intent", {
+        customer_name: name.trim() || "Guest",
+        metadata: { hold_amount: String(hold) },
+      });
+      setStripeInfo(r.data);
+      setStripeReady(true);
+    } catch (e) { console.error(e); }
+    finally { setBusy(false); }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -58,11 +73,19 @@ export default function PreauthModal({ table, onClose, onOpened }) {
             </Field>
           </div>
           <div className="p-2.5 rounded-lg bg-[var(--cyan)]/10 border border-[var(--cyan)]/30 text-[10px] font-mono text-[var(--cyan)] leading-relaxed">
-            MOCKED — no card is charged now. At last call the auto-close job settles this tab against **** {last4 || "••••"}.
+            {stripeReady ? (
+              <>Stripe SetupIntent <span className="font-black">{stripeInfo?.setup_intent_id?.slice(0, 12)}…</span> created ✓ · At last call, auto-close charges the on-file card.</>
+            ) : (
+              <>Click <span className="font-black">Create Card Hold</span> to reserve a real Stripe SetupIntent (test-mode) — or open the tab with the last-4 only.</>
+            )}
           </div>
         </div>
         <div className="flex gap-2 mt-4">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">Cancel</button>
+          <button data-testid="preauth-stripe" onClick={createStripeHold} disabled={busy || !name.trim() || stripeReady}
+            className="flex-1 py-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--cyan)] text-[var(--cyan)] disabled:opacity-40">
+            {stripeReady ? "Hold Created ✓" : (busy ? "Creating…" : "Create Card Hold")}
+          </button>
           <button data-testid="preauth-open" onClick={submit} disabled={!canOpen || busy}
             className="flex-1 btn-neon py-2.5 rounded-lg disabled:opacity-40">
             {busy ? "Opening…" : "Open Tab"}

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { api, fmtHKD } from "@/lib/api";
 import { toast } from "sonner";
-import { Zap, Send, X, Beer, Plus, Minus } from "lucide-react";
+import { Zap, Send, X, Beer, Plus, Minus, TrendingUp } from "lucide-react";
 import Receipt from "@/components/pos/Receipt";
 import { errMsg } from "@/lib/errors";
 
@@ -13,11 +13,13 @@ export default function QuickBar() {
   const [products, setProducts] = useState([]);
   const [activeHH, setActiveHH] = useState([]);
   const [cart, setCart] = useState([]);
+  const [combos, setCombos] = useState([]);
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState(null);
 
   useEffect(() => {
     api.get("/products").then((r) => setProducts(r.data.filter((p) => p.kind === "drink" && !p.eightysix)));
+    api.get("/combos").then((r) => setCombos(r.data));
     const loadHH = () => api.get("/happy-hours/active").then((r) => setActiveHH(r.data.active || []));
     loadHH();
     const t = setInterval(loadHH, 60000);
@@ -53,6 +55,47 @@ export default function QuickBar() {
   const subtotal = useMemo(() => cart.reduce((s, l) => s + l.price * l.qty, 0), [cart]);
   const service = +(subtotal * 0.1).toFixed(2);
   const total = +(subtotal + service).toFixed(2);
+
+  // Combo Heat-Map — for each product tile, check if +1 would trip an active combo
+  const tileHint = useMemo(() => {
+    if (!combos.length) return () => null;
+    const hhLocked = new Set(cart.filter((l) => (l.hh_pct || 0) > 0).map((l) => l.product_id));
+    const qtys = {};
+    cart.forEach((l) => {
+      if (l.product_id && !hhLocked.has(l.product_id)) qtys[l.product_id] = (qtys[l.product_id] || 0) + l.qty;
+    });
+    const matches = (c, q) => {
+      const slots = c.slots || [];
+      if (!slots.length) {
+        const req = c.product_ids || [];
+        return req.length > 0 && req.every((pid) => (q[pid] || 0) >= 1);
+      }
+      return slots.every((s) => {
+        const pids = s.product_ids || [];
+        if (!pids.length) return false;
+        const total = pids.reduce((a, pid) => a + (q[pid] || 0), 0);
+        const min = s.min_qty ?? 1, max = s.max_qty ?? 99;
+        if (s.operator === "and") return pids.every((pid) => (q[pid] || 0) >= 1 && (q[pid] || 0) <= max);
+        return total >= min && total <= max;
+      });
+    };
+    return (p) => {
+      if (hhLocked.has(p.id)) return null;
+      for (const c of combos) {
+        if (!c.active) continue;
+        if (matches(c, qtys)) continue;
+        const involved = c.slots?.length
+          ? new Set(c.slots.flatMap((s) => s.product_ids || []))
+          : new Set(c.product_ids || []);
+        if (!involved.has(p.id)) continue;
+        const trial = { ...qtys, [p.id]: (qtys[p.id] || 0) + 1 };
+        if (matches(c, trial)) {
+          return { combo: c.name, discount_type: c.discount_type, discount_value: c.discount_value };
+        }
+      }
+      return null;
+    };
+  }, [combos, cart]);
 
   const sendAndPay = async (method = "cash") => {
     if (!cart.length) return toast.error("Nothing to send");
@@ -108,6 +151,7 @@ export default function QuickBar() {
           {products.map((p) => {
             const pct = hhFor(p);
             const price = priceOf(p);
+            const hint = tileHint(p);
             return (
               <button
                 key={p.id}
@@ -119,6 +163,12 @@ export default function QuickBar() {
                 {pct > 0 && (
                   <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-[var(--amber)] text-black text-[10px] font-mono font-black">
                     -{pct}%
+                  </span>
+                )}
+                {hint && (
+                  <span data-testid={`qb-hint-${p.name}`}
+                    className="absolute -top-2 left-2 px-1.5 py-0.5 rounded-full bg-[var(--cyan)] text-black text-[9px] font-mono font-black flex items-center gap-0.5 shadow-lg">
+                    <TrendingUp size={9} /> +1 → -{hint.discount_type === "percent" ? `${hint.discount_value}%` : fmtHKD(hint.discount_value)}
                   </span>
                 )}
                 <div>
